@@ -1,0 +1,413 @@
+body {
+    font-family: ui-sans-serif, system-ui, sans-serif, Apple Color Emoji, Segoe UI Emoji,
+        Segoe UI Symbol, Noto Color Emoji;
+}
+
+.calendarContainer {
+    display: flex;
+    height: max-content;
+    padding-right: 1rem;
+    overflow-x: scroll;
+}
+
+.monthContainer {
+    display: flex;
+    padding-left: 1rem;
+}
+
+.stickyMonthTitle {
+    position: sticky;
+    top: 0;
+    left: 0;
+    padding-left: 1rem;
+    min-width: max-content;
+    margin-bottom: 0.25rem;
+    margin-top: 0;
+    font-size: 24px;
+    width: 1px;
+    cursor: pointer;
+}
+
+.dayContainer {
+    width: 150px;
+    height: 85vh;
+    border: 1px solid #ddd;
+    padding: 0.25rem;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+}
+
+.eventOuter {
+    overflow: hidden;
+    height: max-content;
+    transition: opacity 0.5s;
+}
+
+.eventInner {
+    background-color: #f0f0f0;
+    overflow: hidden;
+    border-radius: 8px;
+    border: 1px solid #fff;
+    height: 100%;
+    width: 100%;
+    box-sizing: border-box;
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+}
+
+.eventInner h4 {
+    opacity: 0.5;
+}
+
+.eventInner p {
+    font-size: 12px;
+    color: #333;
+    margin-top: -4px;
+    opacity: 0.5;
+}
+
+.color-dot {
+    height: 10px;
+    width: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 5px;
+}
+
+.calendarContainer.filtered .eventOuter {
+    opacity: 0.25;
+}
+
+.calendarContainer.filtered .eventOuter.selected {
+    opacity: 1;
+}
+
+/* TAILWIND */
+
+.px-3 {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+}
+
+.px-4 {
+    padding-left: 1rem;
+    padding-right: 1rem;
+}
+
+.py-2 {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+}
+
+.bg-blue-500 {
+    background-color: #3b82f6;
+}
+
+.text-white {
+    color: #ffffff;
+}
+
+.rounded {
+    border-radius: 0.375rem;
+}
+
+.mb-4 {
+    margin-bottom: 1rem;
+}
+
+.ml-4 {
+    margin-left: 1rem;
+}
+
+.p-4 {
+    padding: 1rem;
+}
+
+.border {
+    border: 1px solid #d1d5db;
+}
+
+.flex {
+    display: flex;
+}
+
+.flex-col {
+    flex-direction: column;
+}
+
+.gap-2 {
+    gap: 0.5rem;
+}
+
+.gap-4 {
+    gap: 1rem;
+}
+
+.items-center {
+    align-items: center;
+}
+
+.justify-center {
+    justify-content: center;
+}
+
+.relative {
+    position: relative;
+}
+
+.stickyMonthTitle {
+    position: sticky;
+    top: 0;
+    background-color: white;
+    z-index: 10;
+}
+
+.w-64 {
+    width: 16rem;
+}
+
+.text-left {
+    text-align: left;
+}
+
+.hidden {
+    display: none;
+}
+
+.max-h-64 {
+    max-height: 16rem;
+}
+
+.overflow-y-auto {
+    overflow-y: auto;
+}
+
+.z-50 {
+    z-index: 50;
+}
+
+.absolute {
+    position: absolute;
+}
+
+.mt-1 {
+    margin-top: 0.25rem;
+}
+
+.bg-white {
+    background-color: #ffffff;
+}
+
+.shadow-lg {
+    box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+}
+
+.border-b {
+    border-bottom: 1px solid #d1d5db;
+}
+
+.sticky {
+    position: sticky;
+}
+
+.top-0 {
+    top: 0;
+}
+
+.w-full {
+    width: 100%;
+}
+
+.py-1 {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+}
+
+.cursor-pointer {
+    cursor: pointer;
+}
+
+.hover\:bg-gray-100:hover {
+    background-color: #f3f4f6;
+}
+
+.w-3 {
+    width: 0.75rem;
+}
+
+.h-3 {
+    height: 0.75rem;
+}
+
+.rounded-full {
+    border-radius: 9999px;
+}
+
+.mb-1 {
+    margin-bottom: 0.25rem;
+}
+
+.border-rounded {
+    border-radius: 0.375rem;
+}
+
+.text-center {
+    text-align: center;
+}
+
+.stickyMonthTitle {
+    position: sticky;
+    top: 0;
+    background-color: white;
+}
+
+.eventOuter {
+    /* Styles for eventOuter */
+}
+
+.eventInner {
+    /* Styles for eventInner */
+}
+
+.modification {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.relative {
+    position: relative;
+}
+
+.border {
+    border: 1px solid #d1d5db;
+}
+
+.p-2 {
+    padding: 0.5rem;
+}
+
+.rounded {
+    border-radius: 0.375rem;
+}
+
+.text-left {
+    text-align: left;
+}
+
+.w-64 {
+    width: 16rem;
+}
+
+.flex {
+    display: flex;
+}
+
+.items-center {
+    align-items: center;
+}
+
+.gap-2 {
+    gap: 0.5rem;
+}
+
+.hidden {
+    display: none;
+}
+
+.w-3 {
+    width: 0.75rem;
+}
+
+.h-3 {
+    height: 0.75rem;
+}
+
+.rounded-full {
+    border-radius: 9999px;
+}
+
+.absolute {
+    position: absolute;
+}
+
+.mt-1 {
+    margin-top: 0.25rem;
+}
+
+.bg-white {
+    background-color: #ffffff;
+}
+
+.shadow-lg {
+    box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+}
+
+.border-b {
+    border-bottom: 1px solid #d1d5db;
+}
+
+.sticky {
+    position: sticky;
+}
+
+.top-0 {
+    top: 0;
+}
+
+.w-full {
+    width: 100%;
+}
+
+.py-1 {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+}
+
+.cursor-pointer {
+    cursor: pointer;
+}
+
+.hover\:bg-gray-100:hover {
+    background-color: #f3f4f6;
+}
+
+.w-3 {
+    width: 0.75rem;
+}
+
+.h-3 {
+    height: 0.75rem;
+}
+
+.rounded-full {
+    border-radius: 9999px;
+}
+
+.hidden {
+    display: none;
+}
+
+.px-3 {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+}
+
+.py-2 {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+}
+
+.bg-red-500 {
+    background-color: #f87171;
+}
+
+.text-white {
+    color: #ffffff;
+}
+
+.rounded {
+    border-radius: 0.375rem;
+}
