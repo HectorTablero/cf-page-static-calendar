@@ -1,0 +1,7 @@
+<svg viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg">
+  <path style="stroke: rgb(0, 0, 0); stroke-linejoin: round; stroke-linecap: round; stroke-width: 20px; fill: none;" d="M 175 150 L 25 150 L 25 50 L 475 50 L 475 150 L 325 150"></path>
+  <path style="fill: none; stroke-linecap: round; stroke: rgb(0, 114, 255); stroke-width: 20px;" d="M 300 150 L 300 275"></path>
+  <path style="fill: none; stroke-linecap: round; stroke: rgb(0, 114, 255); stroke-linejoin: round; stroke-width: 20px;" d="M 200 150 L 275 212.5 L 200 275"></path>
+  <path style="fill: none; stroke-linecap: round; stroke: rgb(0, 114, 255); stroke-linejoin: round; stroke-width: 20px;" d="M 270 212.5 L 25 212.5"></path>
+  <path style="fill: none; stroke-linecap: round; stroke: rgb(0, 0, 0); stroke-linejoin: round; stroke-width: 20px;" d="M 300 300 L 300 450 L 200 450 L 200 300"></path>
+</svg>

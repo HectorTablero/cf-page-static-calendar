@@ -150,13 +150,101 @@
         const words = {};
         const hexLightness = 50;
         let chart;
+        const colors = {
+            "1": "#b0c4de", // neutral
+            "2": "#aee4c4", // mid-prod
+            "3": "#d0b1da", // social
+            "4": "#f7c2a4", // mid-unprod
+            "5": "#f9dd9b", // mix
+            "6": "#000", // (orange)
+            "7": "#000", // (aqua)
+            "8": "#b0b0b0", // rest
+            "9": "#98a8cf", // social-prod
+            "10": "#9fbeaa", // prod
+            "11": "#e5a4a5", // unprod
+            default: "#e0e0e0" // not specified
+      };
+
+        function getColor(colorId) {
+            return colorId ? colors[colorId] || colors.default : colors.default;
+        }
+
+        function extractDataFromEvent(event) {
+            return {
+                summary: event.summary || "?",
+                color: getColor(event.colorId),
+                start: event.start,
+                end: event.end
+            };
+        }
+
+        function processEvents(event) {
+            const start = new Date(event.start.dateTime);
+            const end = new Date(event.end.dateTime);
+
+            if (start.toDateString() === end.toDateString()) {
+                return [extractDataFromEvent(event)];
+            }
+
+            const splitEvents = [];
+
+            const firstDayEnd = new Date(start);
+            firstDayEnd.setDate(firstDayEnd.getDate() + 1);
+            firstDayEnd.setHours(0, 0, 0, 0);
+            splitEvents.push({
+                ...extractDataFromEvent(event),
+                end: {
+                    dateTime: firstDayEnd.toISOString(),
+                    timeZone: event.start.timeZone
+                },
+                trueEnd: {
+                    dateTime: end.toISOString(),
+                    timeZone: event.end.timeZone
+                }
+            });
+
+            const currentDayStart = new Date(firstDayEnd);
+            currentDayStart.setHours(0, 0, 0, 0);
+            while (currentDayStart < end) {
+                const currentDayEnd = new Date(currentDayStart);
+                currentDayEnd.setDate(currentDayEnd.getDate() + 1);
+                currentDayEnd.setHours(0, 0, 0, 0);
+
+                splitEvents.push({
+                    ...extractDataFromEvent(event),
+                    start: {
+                        dateTime: currentDayStart.toISOString(),
+                        timeZone: event.start.timeZone
+                    },
+                    trueStart: {
+                        dateTime: start.toISOString(),
+                        timeZone: event.start.timeZone
+                    },
+                    end: {
+                        dateTime: (currentDayEnd < end ? currentDayEnd : end).toISOString(),
+                        timeZone: event.end.timeZone
+                    },
+                    trueEnd: {
+                        dateTime: end.toISOString(),
+                        timeZone: event.end.timeZone
+                    }
+                });
+
+                currentDayStart.setDate(currentDayStart.getDate() + 1);
+            }
+
+            if (new Date(splitEvents[splitEvents.length - 1].start.dateTime).getDate() === 1)
+                splitEvents.pop();
+
+            return splitEvents;
+        }
 
         async function fetchData() {
             try {
                 const response = await fetch("https://workers.tablerus.es/calendar/everything");
                 if (!response.ok) throw new Error("Network response error");
 
-                originalEvents = await response.json();
+                originalEvents = processEvents(await response.json());
             } catch (error) {
                 console.error("Fetch error:", error);
             }
