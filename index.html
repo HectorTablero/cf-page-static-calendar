@@ -178,7 +178,7 @@
             };
         }
 
-        function processEvents(event) {
+        function processEvent(event) {
             const start = new Date(event.start.dateTime);
             const end = new Date(event.end.dateTime);
 
@@ -244,7 +244,7 @@
                 const response = await fetch("https://workers.tablerus.es/calendar/everything");
                 if (!response.ok) throw new Error("Network response error");
 
-                originalEvents = processEvents(await response.json());
+                originalEvents = (await response.json()).flatMap(processEvent);
             } catch (error) {
                 console.error("Fetch error:", error);
             }
