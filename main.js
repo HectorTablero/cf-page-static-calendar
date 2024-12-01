@@ -708,6 +708,19 @@ function createApexChart(events) {
     });
 }
 
+document.getElementById("startDate").addEventListener("change", updateChart);
+document.getElementById("endDate").addEventListener("change", updateChart);
+document.getElementById("excludeComposed").addEventListener("change", updateChart);
+function updateChart() {
+    const startDate = document.getElementById("startDate").value;
+    const endDate = document.getElementById("endDate").value;
+    const titleText = document.getElementById("selectedTitle").textContent;
+    const excludeComposed = document.getElementById("excludeComposed").checked;
+
+    const title = titleText === "Select title..." ? "" : titleText;
+    createApexChart(filterEvents(startDate, endDate, title, excludeComposed));
+}
+
 fetchData().then(() => {
     renderCalendar(originalEvents);
     if (words["Japanese"]) addModification("Japanese", "Languages");
@@ -827,19 +840,6 @@ fetchData().then(() => {
         });
 
         updateOptions();
-    }
-
-    document.getElementById("startDate").addEventListener("change", updateChart);
-    document.getElementById("endDate").addEventListener("change", updateChart);
-    document.getElementById("excludeComposed").addEventListener("change", updateChart);
-    function updateChart() {
-        const startDate = document.getElementById("startDate").value;
-        const endDate = document.getElementById("endDate").value;
-        const titleText = document.getElementById("selectedTitle").textContent;
-        const excludeComposed = document.getElementById("excludeComposed").checked;
-
-        const title = titleText === "Select title..." ? "" : titleText;
-        createApexChart(filterEvents(startDate, endDate, title, excludeComposed));
     }
 
     createApexChart(originalEvents);
