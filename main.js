@@ -368,7 +368,7 @@ function addModification(filter, replace) {
         document.dispatchEvent(new Event("validatetitle"));
         const titleText = document.getElementById("selectedTitle").textContent;
         const title = titleText === "Select title..." ? "" : titleText;
-        if (lastReplaceValue === title) updateChart();
+        if (lastReplaceValue === title) setTimeout(updateChart, 10);
         modificationDiv.remove();
     };
 
@@ -819,8 +819,6 @@ fetchData().then(() => {
                 option.className =
                     "flex items-center gap-2 px-3 py-2 hover:bg-gray-100 cursor-pointer";
                 option.dataset.value = text;
-
-                if (filter) console.log(color);
 
                 const dot = document.createElement("div");
                 dot.className = "w-3 h-3 rounded-full";
