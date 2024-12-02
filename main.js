@@ -4,6 +4,7 @@ const ctx = document.getElementById("chart").getContext("2d");
 const words = {};
 const hexLightness = 50;
 let chart;
+let isFilter = false;
 const colors = {
     1: "#b0c4de", // neutral
     2: "#aee4c4", // mid-prod
@@ -286,6 +287,7 @@ function addModification(filter, replace) {
     dropdownMenu.appendChild(optionsContainer);
 
     let lastModification = "";
+    let lastReplaceValue = "";
 
     const updateOptions = (searchTerm = "") => {
         optionsContainer.innerHTML = "";
@@ -312,6 +314,10 @@ function addModification(filter, replace) {
                     dropdownMenu.classList.add("hidden");
                     applyModification(lastModification, lastModification);
                     applyModification(key, replaceInput.value);
+                    const titleText = document.getElementById("selectedTitle").textContent;
+                    const title = titleText === "Select title..." ? "" : titleText;
+                    if (lastModification === title || key === title || lastReplaceValue === title)
+                        updateChart();
                     lastModification = key;
                 };
 
@@ -359,6 +365,10 @@ function addModification(filter, replace) {
     removeButton.textContent = "×";
     removeButton.onclick = () => {
         applyModification(lastModification, lastModification);
+        document.dispatchEvent(new Event("validatetitle"));
+        const titleText = document.getElementById("selectedTitle").textContent;
+        const title = titleText === "Select title..." ? "" : titleText;
+        if (lastReplaceValue === title) updateChart();
         modificationDiv.remove();
     };
 
@@ -366,9 +376,14 @@ function addModification(filter, replace) {
     replaceInput.addEventListener("input", (e) => {
         const selectedValue = buttonText.textContent;
         if (selectedValue !== "Select a filter...") {
-            applyModification(selectedValue, e.target.value);
-            lastModification = buttonText.textContent;
-            document.dispatchEvent(new Event("updatedropdown"));
+            const newReplaceValue = e.target.value;
+            applyModification(selectedValue, newReplaceValue);
+            document.dispatchEvent(new Event("validatetitle"));
+            const titleText = document.getElementById("selectedTitle").textContent;
+            const title = titleText === "Select title..." ? "" : titleText;
+            if (lastReplaceValue === title || newReplaceValue === title) updateChart();
+            lastModification = selectedValue;
+            lastReplaceValue = newReplaceValue;
         }
     });
 
@@ -541,22 +556,27 @@ function filterEvents(start, end, title, excludeComposed = false) {
             const eventTitle = event.summary.trim().toLowerCase();
             const compareTitle = title.trim().toLowerCase();
 
-            const directMatch = excludeComposed
-                ? eventTitle === compareTitle
-                : eventTitle.indexOf(compareTitle) >= 0;
-
-            if (directMatch) return true;
-
-            if (customCategories.has(compareTitle)) {
-                for (const sourceTitle of customCategories.get(compareTitle)) {
-                    if (excludeComposed) {
-                        if (eventTitle === sourceTitle.toLowerCase()) return true;
-                    } else if (eventTitle.indexOf(sourceTitle.toLowerCase()) >= 0) {
-                        return true;
+            if (isFilter) {
+                if (customCategories.has(compareTitle)) {
+                    for (const sourceTitle of customCategories.get(compareTitle)) {
+                        if (excludeComposed) {
+                            if (eventTitle === sourceTitle.toLowerCase()) return true;
+                        } else if (
+                            eventTitle
+                                .split("+")
+                                .some((title) => title.trim() === sourceTitle.toLowerCase())
+                        )
+                            return true;
                     }
                 }
+                return false;
             }
-            return false;
+
+            const directMatch = excludeComposed
+                ? eventTitle === compareTitle
+                : eventTitle.split("+").some((title) => title.trim() === compareTitle);
+
+            return directMatch;
         }
         return true;
     }
@@ -708,16 +728,32 @@ function createApexChart(events) {
     });
 }
 
+document.getElementById("startDate").addEventListener("change", updateChart);
+document.getElementById("endDate").addEventListener("change", updateChart);
+document.getElementById("excludeComposed").addEventListener("change", updateChart);
+function updateChart() {
+    const startDate = document.getElementById("startDate").value;
+    const endDate = document.getElementById("endDate").value;
+    const titleText = document.getElementById("selectedTitle").textContent;
+    const excludeComposed = document.getElementById("excludeComposed").checked;
+
+    const title = titleText === "Select title..." ? "" : titleText;
+    createApexChart(filterEvents(startDate, endDate, title, excludeComposed));
+}
+
 fetchData().then(() => {
     renderCalendar(originalEvents);
+    /*
     if (words["Japanese"]) addModification("Japanese", "Languages");
     if (words["Duolingo"]) addModification("Duolingo", "Languages");
-    /*
-            if (words["Cycling"]) addModification("Cycling", "Sports");
-            if (words["Running"]) addModification("Running", "Sports");
-            if (words["Boxing"]) addModification("Boxing", "Sports");
-            if (words["Workout"]) addModification("Workout", "Sports");
-            */
+    if (words["Cycling"]) addModification("Cycling", "Sports");
+    if (words["Running"]) addModification("Running", "Sports");
+    if (words["Boxing"]) addModification("Boxing", "Sports");
+    if (words["Workout"]) addModification("Workout", "Sports");
+    if (words["Friends"]) addModification("Friends", "Social");
+    if (words["Friend"]) addModification("Friend", "Social");
+    if (words["Family"]) addModification("Family", "Social");
+    */
 
     function initializeTitleDropdown() {
         const dropdownButton = document.getElementById("titleDropdown");
@@ -727,27 +763,40 @@ fetchData().then(() => {
         const selectedTitle = document.getElementById("selectedTitle");
         const selectedDot = document.getElementById("selectedDot");
 
+        function updateDropdown() {
+            const searchTerm = document.getElementById("titleSearch").value;
+            updateOptions(searchTerm);
+        }
+
+        function clearSelection() {
+            selectedTitle.textContent = "Select title...";
+            searchInput.value = "";
+            selectedDot.classList.add("hidden");
+            menu.classList.add("hidden");
+            isFilter = false;
+            updateChart();
+            updateDropdown();
+        }
+
         function updateOptions(searchTerm = "") {
             optionsContainer.innerHTML =
                 '<div class="px-3 py-2 hover:bg-gray-100 cursor-pointer">Clear selection</div>';
 
             const customCategories = new Map();
-            const existingCategories = new Set(Object.keys(words));
 
             document.querySelectorAll(".modification").forEach((mod) => {
                 const sourceTitle = mod.querySelector("button span")?.textContent;
                 const replaceValue = mod.childNodes[1].value;
                 if (sourceTitle && sourceTitle !== "Select a filter..." && replaceValue) {
-                    if (!customCategories.has(replaceValue)) {
+                    if (!customCategories.has(replaceValue))
                         customCategories.set(replaceValue, new Set());
-                    }
                     customCategories.get(replaceValue).add(sourceTitle);
                 }
             });
 
             Object.keys(words)
                 .filter((key) => key.toLowerCase().includes(searchTerm.toLowerCase()))
-                .forEach((key) => addOptionToDropdown(key, getMostCommonColor(key), true));
+                .forEach((key) => addOptionToDropdown(key, getMostCommonColor(key), false));
 
             customCategories.forEach((sources, category) => {
                 if (category.toLowerCase().includes(searchTerm.toLowerCase())) {
@@ -759,11 +808,11 @@ fetchData().then(() => {
                     const mostCommon = Object.keys(colorCounts).reduce((a, b) =>
                         colorCounts[a] > colorCounts[b] ? a : b
                     );
-                    addOptionToDropdown(category, mostCommon, false);
+                    addOptionToDropdown(category, mostCommon, true);
                 }
             });
 
-            function addOptionToDropdown(text, color, filled) {
+            function addOptionToDropdown(text, color, filter) {
                 if (optionsContainer.querySelector(`[data-value="${text}"]`)) return;
 
                 const option = document.createElement("div");
@@ -771,9 +820,11 @@ fetchData().then(() => {
                     "flex items-center gap-2 px-3 py-2 hover:bg-gray-100 cursor-pointer";
                 option.dataset.value = text;
 
+                if (filter) console.log(color);
+
                 const dot = document.createElement("div");
                 dot.className = "w-3 h-3 rounded-full";
-                dot.style.backgroundColor = filled ? color : "transparent";
+                dot.style.backgroundColor = filter ? "transparent" : color;
                 dot.style.border = `3px ${color} solid`;
                 option.appendChild(dot);
 
@@ -783,10 +834,11 @@ fetchData().then(() => {
 
                 option.addEventListener("click", () => {
                     selectedTitle.textContent = text;
-                    selectedDot.style.backgroundColor = filled ? color : "transparent";
+                    selectedDot.style.backgroundColor = filter ? "transparent" : color;
                     selectedDot.style.border = `3px ${color} solid`;
                     selectedDot.classList.remove("hidden");
                     menu.classList.add("hidden");
+                    isFilter = filter;
                     updateChart();
                 });
 
@@ -812,34 +864,27 @@ fetchData().then(() => {
 
         menu.addEventListener("click", (e) => {
             e.stopPropagation();
-            if (e.target.textContent === "Clear selection") {
-                selectedTitle.textContent = "Select title...";
-                searchInput.value = "";
-                selectedDot.classList.add("hidden");
-                menu.classList.add("hidden");
-                updateChart();
-            }
+            if (e.target.textContent === "Clear selection") clearSelection();
         });
 
         document.addEventListener("updatedropdown", () => {
-            const searchTerm = document.getElementById("titleSearch").value;
-            updateOptions(searchTerm);
+            updateDropdown();
+        });
+
+        document.addEventListener("validatetitle", () => {
+            const tText = selectedTitle.textContent;
+            const value = tText === "Select title..." ? "" : tText;
+            if (
+                isFilter &&
+                !Array.from(document.querySelectorAll(".modification input")).some(
+                    (input) => input.value.trim() === value.trim()
+                )
+            )
+                clearSelection();
+            else updateDropdown();
         });
 
         updateOptions();
-    }
-
-    document.getElementById("startDate").addEventListener("change", updateChart);
-    document.getElementById("endDate").addEventListener("change", updateChart);
-    document.getElementById("excludeComposed").addEventListener("change", updateChart);
-    function updateChart() {
-        const startDate = document.getElementById("startDate").value;
-        const endDate = document.getElementById("endDate").value;
-        const titleText = document.getElementById("selectedTitle").textContent;
-        const excludeComposed = document.getElementById("excludeComposed").checked;
-
-        const title = titleText === "Select title..." ? "" : titleText;
-        createApexChart(filterEvents(startDate, endDate, title, excludeComposed));
     }
 
     createApexChart(originalEvents);
