@@ -156,14 +156,19 @@ function renderDay(dateD) {
         innerDiv.appendChild(time);
 
         const data = [event.summary, title, event.color];
-        event.summary.split(" + ").forEach((word) => {
+        event.summary.split("+").forEach((word) => {
+            word = word.trim();
             if (!words[word]) words[word] = [];
             words[word].push(data);
         });
 
         event.div = outerDiv;
 
-        if (event.summary.indexOf("+") === -1) {
+        if (
+            event.summary.indexOf("+") === -1 &&
+            event.summary.trim() !== "?" &&
+            event.color !== colors.default
+        ) {
             innerDiv.style.cursor = "pointer";
             innerDiv.addEventListener("click", () => {
                 if (
@@ -292,7 +297,12 @@ function addModification(filter, replace) {
     const updateOptions = (searchTerm = "") => {
         optionsContainer.innerHTML = "";
         Object.keys(words)
-            .filter((key) => key.toLowerCase().includes(searchTerm.toLowerCase()))
+            .filter(
+                (key) =>
+                    key.toLowerCase().includes(searchTerm.toLowerCase()) &&
+                    words[key][0][2] !== colors.default &&
+                    key !== "?"
+            )
             .forEach((key) => {
                 const option = document.createElement("div");
                 option.className =
@@ -795,7 +805,12 @@ fetchData().then(() => {
             });
 
             Object.keys(words)
-                .filter((key) => key.toLowerCase().includes(searchTerm.toLowerCase()))
+                .filter(
+                    (key) =>
+                        key.toLowerCase().includes(searchTerm.toLowerCase()) &&
+                        words[key][0][2] !== colors.default &&
+                        key !== "?"
+                )
                 .forEach((key) => addOptionToDropdown(key, getMostCommonColor(key), false));
 
             customCategories.forEach((sources, category) => {
