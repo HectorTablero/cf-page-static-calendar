@@ -4,6 +4,7 @@ const ctx = document.getElementById("chart").getContext("2d");
 const words = {};
 const hexLightness = 50;
 let chart;
+let isFilter = false;
 const colors = {
     1: "#b0c4de", // neutral
     2: "#aee4c4", // mid-prod
@@ -286,6 +287,7 @@ function addModification(filter, replace) {
     dropdownMenu.appendChild(optionsContainer);
 
     let lastModification = "";
+    let lastReplaceValue = "";
 
     const updateOptions = (searchTerm = "") => {
         optionsContainer.innerHTML = "";
@@ -312,6 +314,10 @@ function addModification(filter, replace) {
                     dropdownMenu.classList.add("hidden");
                     applyModification(lastModification, lastModification);
                     applyModification(key, replaceInput.value);
+                    const titleText = document.getElementById("selectedTitle").textContent;
+                    const title = titleText === "Select title..." ? "" : titleText;
+                    if (lastModification === title || key === title || lastReplaceValue === title)
+                        updateChart();
                     lastModification = key;
                 };
 
@@ -359,6 +365,10 @@ function addModification(filter, replace) {
     removeButton.textContent = "×";
     removeButton.onclick = () => {
         applyModification(lastModification, lastModification);
+        const titleText = document.getElementById("selectedTitle").textContent;
+        const title = titleText === "Select title..." ? "" : titleText;
+        if (lastModification === title || lastReplaceValue === title || newReplaceValue === title)
+            updateChart();
         modificationDiv.remove();
     };
 
@@ -366,8 +376,19 @@ function addModification(filter, replace) {
     replaceInput.addEventListener("input", (e) => {
         const selectedValue = buttonText.textContent;
         if (selectedValue !== "Select a filter...") {
-            applyModification(selectedValue, e.target.value);
-            lastModification = buttonText.textContent;
+            const newReplaceValue = e.target.value;
+            applyModification(selectedValue, newReplaceValue);
+            const titleText = document.getElementById("selectedTitle").textContent;
+            const title = titleText === "Select title..." ? "" : titleText;
+            if (
+                lastModification === title ||
+                selectedValue === title ||
+                lastReplaceValue === title ||
+                newReplaceValue === title
+            )
+                updateChart();
+            lastModification = selectedValue;
+            lastReplaceValue = newReplaceValue;
             document.dispatchEvent(new Event("updatedropdown"));
         }
     });
@@ -538,25 +559,30 @@ function filterEvents(start, end, title, excludeComposed = false) {
             return false;
         if (end && new Date(event.end.dateTime).getTime() > new Date(end).getTime()) return false;
         if (title) {
+            if (isFilter) {
+                if (customCategories.has(compareTitle)) {
+                    for (const sourceTitle of customCategories.get(compareTitle)) {
+                        if (excludeComposed) {
+                            if (eventTitle === sourceTitle.toLowerCase()) return true;
+                        } else if (
+                            eventTitle
+                                .split("+")
+                                .some((title) => title.trim() === sourceTitle.toLowerCase())
+                        )
+                            return true;
+                    }
+                }
+                return false;
+            }
+
             const eventTitle = event.summary.trim().toLowerCase();
             const compareTitle = title.trim().toLowerCase();
 
             const directMatch = excludeComposed
                 ? eventTitle === compareTitle
-                : eventTitle.indexOf(compareTitle) >= 0;
+                : eventTitle.split("+").some((title) => title.trim() === compareTitle);
 
-            if (directMatch) return true;
-
-            if (customCategories.has(compareTitle)) {
-                for (const sourceTitle of customCategories.get(compareTitle)) {
-                    if (excludeComposed) {
-                        if (eventTitle === sourceTitle.toLowerCase()) return true;
-                    } else if (eventTitle.indexOf(sourceTitle.toLowerCase()) >= 0) {
-                        return true;
-                    }
-                }
-            }
-            return false;
+            return directMatch;
         }
         return true;
     }
@@ -723,14 +749,14 @@ function updateChart() {
 
 fetchData().then(() => {
     renderCalendar(originalEvents);
+    /*
     if (words["Japanese"]) addModification("Japanese", "Languages");
     if (words["Duolingo"]) addModification("Duolingo", "Languages");
-    /*
-            if (words["Cycling"]) addModification("Cycling", "Sports");
-            if (words["Running"]) addModification("Running", "Sports");
-            if (words["Boxing"]) addModification("Boxing", "Sports");
-            if (words["Workout"]) addModification("Workout", "Sports");
-            */
+    if (words["Cycling"]) addModification("Cycling", "Sports");
+    if (words["Running"]) addModification("Running", "Sports");
+    if (words["Boxing"]) addModification("Boxing", "Sports");
+    if (words["Workout"]) addModification("Workout", "Sports");
+    */
 
     function initializeTitleDropdown() {
         const dropdownButton = document.getElementById("titleDropdown");
@@ -745,7 +771,6 @@ fetchData().then(() => {
                 '<div class="px-3 py-2 hover:bg-gray-100 cursor-pointer">Clear selection</div>';
 
             const customCategories = new Map();
-            const existingCategories = new Set(Object.keys(words));
 
             document.querySelectorAll(".modification").forEach((mod) => {
                 const sourceTitle = mod.querySelector("button span")?.textContent;
@@ -776,7 +801,7 @@ fetchData().then(() => {
                 }
             });
 
-            function addOptionToDropdown(text, color, filled) {
+            function addOptionToDropdown(text, color, filter) {
                 if (optionsContainer.querySelector(`[data-value="${text}"]`)) return;
 
                 const option = document.createElement("div");
@@ -786,7 +811,7 @@ fetchData().then(() => {
 
                 const dot = document.createElement("div");
                 dot.className = "w-3 h-3 rounded-full";
-                dot.style.backgroundColor = filled ? color : "transparent";
+                dot.style.backgroundColor = filter ? color : "transparent";
                 dot.style.border = `3px ${color} solid`;
                 option.appendChild(dot);
 
@@ -796,10 +821,11 @@ fetchData().then(() => {
 
                 option.addEventListener("click", () => {
                     selectedTitle.textContent = text;
-                    selectedDot.style.backgroundColor = filled ? color : "transparent";
+                    selectedDot.style.backgroundColor = filter ? color : "transparent";
                     selectedDot.style.border = `3px ${color} solid`;
                     selectedDot.classList.remove("hidden");
                     menu.classList.add("hidden");
+                    isFilter = filter;
                     updateChart();
                 });
 
@@ -830,6 +856,7 @@ fetchData().then(() => {
                 searchInput.value = "";
                 selectedDot.classList.add("hidden");
                 menu.classList.add("hidden");
+                isFilter = false;
                 updateChart();
             }
         });
