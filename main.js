@@ -325,7 +325,7 @@ function addModification(filter, replace) {
                     applyModification(lastModification, lastModification);
                     applyModification(key, replaceInput.value);
                     const titleText = document.getElementById("selectedTitle").textContent;
-                    const title = titleText === "Select title..." ? "" : titleText;
+                    const title = (titleText === "Select title..." ? "" : titleText).trim();
                     if (lastModification === title || key === title || lastReplaceValue === title)
                         updateChart();
                     lastModification = key;
@@ -377,8 +377,8 @@ function addModification(filter, replace) {
         applyModification(lastModification, lastModification);
         document.dispatchEvent(new Event("validatetitle"));
         const titleText = document.getElementById("selectedTitle").textContent;
-        const title = titleText === "Select title..." ? "" : titleText;
-        if (lastReplaceValue === title) setTimeout(updateChart, 10);
+        const title = (titleText === "Select title..." ? "" : titleText).trim();
+        if (lastReplaceValue === title) setTimeout(updateChart, 100);
         modificationDiv.remove();
     };
 
@@ -386,7 +386,7 @@ function addModification(filter, replace) {
     replaceInput.addEventListener("input", (e) => {
         const selectedValue = buttonText.textContent;
         if (selectedValue !== "Select a filter...") {
-            const newReplaceValue = e.target.value;
+            const newReplaceValue = e.target.value.trim();
             applyModification(selectedValue, newReplaceValue);
             document.dispatchEvent(new Event("validatetitle"));
             const titleText = document.getElementById("selectedTitle").textContent;
