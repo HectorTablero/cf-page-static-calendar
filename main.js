@@ -375,10 +375,9 @@ function addModification(filter, replace) {
     removeButton.textContent = "×";
     removeButton.onclick = () => {
         applyModification(lastModification, lastModification);
-        document.dispatchEvent(new Event("validatetitle"));
         const titleText = document.getElementById("selectedTitle").textContent;
         const title = (titleText === "Select title..." ? "" : titleText).trim();
-        if (lastReplaceValue === title) setTimeout(updateChart, 100);
+        if (lastReplaceValue === title) document.dispatchEvent(new Event("validatetitle"));
         modificationDiv.remove();
     };
 
