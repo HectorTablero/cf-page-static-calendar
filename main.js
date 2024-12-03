@@ -377,8 +377,9 @@ function addModification(filter, replace) {
         applyModification(lastModification, lastModification);
         const titleText = document.getElementById("selectedTitle").textContent;
         const title = (titleText === "Select title..." ? "" : titleText).trim();
-        if (lastReplaceValue === title) document.dispatchEvent(new Event("validatetitle"));
         modificationDiv.remove();
+        document.dispatchEvent(new Event("validatetitle"));
+        if (lastReplaceValue === title) updateChart();
     };
 
     // Handle replace input changes
