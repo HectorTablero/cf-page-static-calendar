@@ -1,15 +1,14 @@
 <head>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
     <title>Calendario</title>
     <link rel="icon" type="image/svg" href="icons/favicon.svg" />
     <link rel="stylesheet" href="styles.css" />
 </head>
 
 <div id="modifications" class="flex flex-col gap-2 p-4"></div>
-<button id="addModificationBtn" class="px-4 py-2 bg-blue-500 text-white rounded mb-4 ml-4">
-    Add Filter
-</button>
+<button id="addModificationBtn" class="px-4 py-2 bg-blue-500 text-white rounded mb-4 ml-4">Add Filter</button>
 
 <div id="calendar" class="calendarContainer"></div>
 
@@ -30,22 +29,13 @@
 
         <div class="flex flex-col gap-1 relative">
             <label>Title</label>
-            <button
-                type="button"
-                id="titleDropdown"
-                class="border rounded p-2 w-64 text-left flex items-center gap-2">
+            <button type="button" id="titleDropdown" class="border rounded p-2 w-64 text-left flex items-center gap-2">
                 <div id="selectedDot" class="w-3 h-3 rounded-full hidden"></div>
                 <span id="selectedTitle">Select title...</span>
             </button>
 
-            <div
-                id="titleMenu"
-                class="absolute top-full mt-1 w-64 bg-white border rounded shadow-lg hidden max-h-64 overflow-y-auto z-50">
-                <input
-                    type="text"
-                    id="titleSearch"
-                    class="border-b w-full p-2 sticky top-0 bg-white"
-                    placeholder="Search titles..." />
+            <div id="titleMenu" class="absolute top-full mt-1 w-64 bg-white border rounded shadow-lg hidden max-h-64 overflow-y-auto z-50">
+                <input type="text" id="titleSearch" class="border-b w-full p-2 sticky top-0 bg-white" placeholder="Search titles..." />
                 <div id="titleOptions" class="py-1"></div>
             </div>
         </div>

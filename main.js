@@ -1,3 +1,6 @@
+// TODO: Split better when the events cross months
+// TODO: Delete the CALENDAR kv namespace and move the data to MISC
+
 let originalEvents = [];
 const calendarDiv = document.getElementById("calendar");
 const ctx = document.getElementById("chart").getContext("2d");
@@ -88,8 +91,7 @@ function processEvent(event) {
         currentDayStart.setDate(currentDayStart.getDate() + 1);
     }
 
-    if (new Date(splitEvents[splitEvents.length - 1].start.dateTime).getDate() === 1)
-        splitEvents.pop();
+    if (new Date(splitEvents[splitEvents.length - 1].start.dateTime).getDate() === 1) splitEvents.pop();
 
     return splitEvents;
 }
@@ -99,7 +101,9 @@ async function fetchData() {
         const response = await fetch("https://workers.tablerus.es/calendar/everything");
         if (!response.ok) throw new Error("Network response error");
 
-        originalEvents = (await response.json()).flatMap(processEvent);
+        const decompressedResponse = LZString.decompressFromUTF16(await response.body());
+
+        originalEvents = JSON.parse(decompressedResponse).flatMap(processEvent);
     } catch (error) {
         console.error("Fetch error:", error);
     }
@@ -108,11 +112,7 @@ async function fetchData() {
 function renderDay(dateD) {
     const dayEvents = originalEvents.filter((event) => {
         const eventDate = new Date(event.start.dateTime);
-        return (
-            eventDate.getFullYear() === dateD.getFullYear() &&
-            eventDate.getMonth() === dateD.getMonth() &&
-            eventDate.getDate() === dateD.getDate()
-        );
+        return eventDate.getFullYear() === dateD.getFullYear() && eventDate.getMonth() === dateD.getMonth() && eventDate.getDate() === dateD.getDate();
     });
     const div = document.createElement("div");
     div.classList.add("dayContainer");
@@ -127,15 +127,9 @@ function renderDay(dateD) {
     div.appendChild(hr);
 
     dayEvents.forEach((event) => {
-        const startTime = new Date(
-            event.trueStart ? event.trueStart.dateTime : event.start.dateTime
-        ).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
-        const endTime = new Date(
-            event.trueEnd ? event.trueEnd.dateTime : event.end.dateTime
-        ).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
-        const duration =
-            (new Date(event.end.dateTime).getTime() - new Date(event.start.dateTime).getTime()) /
-            60000;
+        const startTime = new Date(event.trueStart ? event.trueStart.dateTime : event.start.dateTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+        const endTime = new Date(event.trueEnd ? event.trueEnd.dateTime : event.end.dateTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+        const duration = (new Date(event.end.dateTime).getTime() - new Date(event.start.dateTime).getTime()) / 60000;
 
         const outerDiv = document.createElement("div");
         outerDiv.classList.add("eventOuter");
@@ -164,23 +158,11 @@ function renderDay(dateD) {
 
         event.div = outerDiv;
 
-        if (
-            event.summary.indexOf("+") === -1 &&
-            event.summary.trim() !== "?" &&
-            event.color !== colors.default
-        ) {
+        if (event.summary.indexOf("+") === -1 && event.summary.trim() !== "?" && event.color !== colors.default) {
             innerDiv.style.cursor = "pointer";
             innerDiv.addEventListener("click", () => {
-                if (
-                    document.getElementById("selectedTitle").textContent.trim().toLowerCase() ===
-                    event.summary.trim().toLowerCase()
-                )
-                    document.getElementById("titleOptions").childNodes[0].click();
-                else
-                    document
-                        .getElementById("titleOptions")
-                        .querySelector(`[data-value=${event.summary}]`)
-                        .click();
+                if (document.getElementById("selectedTitle").textContent.trim().toLowerCase() === event.summary.trim().toLowerCase()) document.getElementById("titleOptions").childNodes[0].click();
+                else document.getElementById("titleOptions").querySelector(`[data-value=${event.summary}]`).click();
             });
         } else innerDiv.style.cursor = "not-allowed";
     });
@@ -194,12 +176,9 @@ function renderMonth(dateM) {
 
     const h2 = document.createElement("h2");
     h2.classList.add("stickyMonthTitle");
-    h2.innerHTML = `<strong>${new Date(dateM.getFullYear(), dateM.getMonth(), 1).toLocaleString(
-        "default",
-        {
-            month: "long"
-        }
-    )}</strong> ${dateM.getFullYear()}`;
+    h2.innerHTML = `<strong>${new Date(dateM.getFullYear(), dateM.getMonth(), 1).toLocaleString("default", {
+        month: "long"
+    })}</strong> ${dateM.getFullYear()}`;
     div.appendChild(h2);
 
     const startDate = new Date(dateM);
@@ -208,13 +187,8 @@ function renderMonth(dateM) {
     h2.addEventListener("click", () => {
         const inputStartDate = document.getElementById("startDate").value;
         const inputEndDate = document.getElementById("endDate").value;
-        const formattedStart = `${startDate.getFullYear()}-${String(
-            startDate.getMonth() + 1
-        ).padStart(2, "0")}-01T00:00`;
-        const formattedEnd = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(
-            2,
-            "0"
-        )}-01T00:00`;
+        const formattedStart = `${startDate.getFullYear()}-${String(startDate.getMonth() + 1).padStart(2, "0")}-01T00:00`;
+        const formattedEnd = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, "0")}-01T00:00`;
         if (inputStartDate === formattedStart && inputEndDate === formattedEnd) {
             document.getElementById("startDate").value = "";
             document.getElementById("endDate").value = "";
@@ -276,8 +250,7 @@ function addModification(filter, replace) {
 
     // Create dropdown menu
     const dropdownMenu = document.createElement("div");
-    dropdownMenu.className =
-        "absolute mt-1 w-64 bg-white border rounded shadow-lg hidden max-h-64 overflow-y-auto z-50";
+    dropdownMenu.className = "absolute mt-1 w-64 bg-white border rounded shadow-lg hidden max-h-64 overflow-y-auto z-50";
 
     // Create search input
     const searchInput = document.createElement("input");
@@ -297,16 +270,10 @@ function addModification(filter, replace) {
     const updateOptions = (searchTerm = "") => {
         optionsContainer.innerHTML = "";
         Object.keys(words)
-            .filter(
-                (key) =>
-                    key.toLowerCase().includes(searchTerm.toLowerCase()) &&
-                    words[key][0][2] !== colors.default &&
-                    key !== "?"
-            )
+            .filter((key) => key.toLowerCase().includes(searchTerm.toLowerCase()) && words[key][0][2] !== colors.default && key !== "?")
             .forEach((key) => {
                 const option = document.createElement("div");
-                option.className =
-                    "flex items-center gap-2 px-3 py-2 hover:bg-gray-100 cursor-pointer";
+                option.className = "flex items-center gap-2 px-3 py-2 hover:bg-gray-100 cursor-pointer";
 
                 const dot = document.createElement("div");
                 dot.className = "w-3 h-3 rounded-full";
@@ -326,8 +293,7 @@ function addModification(filter, replace) {
                     applyModification(key, replaceInput.value);
                     const titleText = document.getElementById("selectedTitle").textContent;
                     const title = (titleText === "Select title..." ? "" : titleText).trim();
-                    if (lastModification === title || key === title || lastReplaceValue === title)
-                        updateChart();
+                    if (lastModification === title || key === title || lastReplaceValue === title) updateChart();
                     lastModification = key;
                 };
 
@@ -431,16 +397,13 @@ function getMostCommonColor(key, retNum) {
         dinner: "#b0c4de", // lightblue
         emails: "#b0c4de" // lightblue
     };
-    if (overrides[key.toLowerCase()])
-        return adjustHexLightness(overrides[key.toLowerCase()], hexLightness);
+    if (overrides[key.toLowerCase()]) return adjustHexLightness(overrides[key.toLowerCase()], hexLightness);
     const colorCounts = {};
     words[key].forEach(([_, __, color]) => {
         colorCounts[color] = (colorCounts[color] || 0) + 1;
     });
 
-    const mostCommon = Object.keys(colorCounts).reduce((a, b) =>
-        colorCounts[a] > colorCounts[b] ? a : b
-    );
+    const mostCommon = Object.keys(colorCounts).reduce((a, b) => (colorCounts[a] > colorCounts[b] ? a : b));
     if (retNum) return [adjustHexLightness(mostCommon, hexLightness), colorCounts[mostCommon]];
     return adjustHexLightness(mostCommon, hexLightness);
 }
@@ -559,8 +522,7 @@ function filterEvents(start, end, title, excludeComposed = false) {
     });
 
     function validateEvent(event) {
-        if (start && new Date(event.start.dateTime).getTime() < new Date(start).getTime())
-            return false;
+        if (start && new Date(event.start.dateTime).getTime() < new Date(start).getTime()) return false;
         if (end && new Date(event.end.dateTime).getTime() > new Date(end).getTime()) return false;
         if (title) {
             const eventTitle = event.summary.trim().toLowerCase();
@@ -571,20 +533,13 @@ function filterEvents(start, end, title, excludeComposed = false) {
                     for (const sourceTitle of customCategories.get(compareTitle)) {
                         if (excludeComposed) {
                             if (eventTitle === sourceTitle.toLowerCase()) return true;
-                        } else if (
-                            eventTitle
-                                .split("+")
-                                .some((title) => title.trim() === sourceTitle.toLowerCase())
-                        )
-                            return true;
+                        } else if (eventTitle.split("+").some((title) => title.trim() === sourceTitle.toLowerCase())) return true;
                     }
                 }
                 return false;
             }
 
-            const directMatch = excludeComposed
-                ? eventTitle === compareTitle
-                : eventTitle.split("+").some((title) => title.trim() === compareTitle);
+            const directMatch = excludeComposed ? eventTitle === compareTitle : eventTitle.split("+").some((title) => title.trim() === compareTitle);
 
             return directMatch;
         }
@@ -665,10 +620,7 @@ function createApexChart(events) {
         });
     });
 
-    const limits = Array.from(
-        { length: categories.length },
-        (_, i) => Object.keys(eventGroups[categories[i]]).length
-    );
+    const limits = Array.from({ length: categories.length }, (_, i) => Object.keys(eventGroups[categories[i]]).length);
 
     function getColor(seriesIndex) {
         let index = seriesIndex;
@@ -789,8 +741,7 @@ fetchData().then(() => {
         }
 
         function updateOptions(searchTerm = "") {
-            optionsContainer.innerHTML =
-                '<div class="px-3 py-2 hover:bg-gray-100 cursor-pointer">Clear selection</div>';
+            optionsContainer.innerHTML = '<div class="px-3 py-2 hover:bg-gray-100 cursor-pointer">Clear selection</div>';
 
             const customCategories = new Map();
 
@@ -798,19 +749,13 @@ fetchData().then(() => {
                 const sourceTitle = mod.querySelector("button span")?.textContent;
                 const replaceValue = mod.childNodes[1].value;
                 if (sourceTitle && sourceTitle !== "Select a filter..." && replaceValue) {
-                    if (!customCategories.has(replaceValue))
-                        customCategories.set(replaceValue, new Set());
+                    if (!customCategories.has(replaceValue)) customCategories.set(replaceValue, new Set());
                     customCategories.get(replaceValue).add(sourceTitle);
                 }
             });
 
             Object.keys(words)
-                .filter(
-                    (key) =>
-                        key.toLowerCase().includes(searchTerm.toLowerCase()) &&
-                        words[key][0][2] !== colors.default &&
-                        key !== "?"
-                )
+                .filter((key) => key.toLowerCase().includes(searchTerm.toLowerCase()) && words[key][0][2] !== colors.default && key !== "?")
                 .forEach((key) => addOptionToDropdown(key, getMostCommonColor(key), false));
 
             customCategories.forEach((sources, category) => {
@@ -820,9 +765,7 @@ fetchData().then(() => {
                         const [color, n] = getMostCommonColor(realCategory, true);
                         colorCounts[color] = (colorCounts[color] || 0) + n;
                     });
-                    const mostCommon = Object.keys(colorCounts).reduce((a, b) =>
-                        colorCounts[a] > colorCounts[b] ? a : b
-                    );
+                    const mostCommon = Object.keys(colorCounts).reduce((a, b) => (colorCounts[a] > colorCounts[b] ? a : b));
                     addOptionToDropdown(category, mostCommon, true);
                 }
             });
@@ -831,8 +774,7 @@ fetchData().then(() => {
                 if (optionsContainer.querySelector(`[data-value="${text}"]`)) return;
 
                 const option = document.createElement("div");
-                option.className =
-                    "flex items-center gap-2 px-3 py-2 hover:bg-gray-100 cursor-pointer";
+                option.className = "flex items-center gap-2 px-3 py-2 hover:bg-gray-100 cursor-pointer";
                 option.dataset.value = text;
 
                 const dot = document.createElement("div");
@@ -887,13 +829,7 @@ fetchData().then(() => {
         document.addEventListener("validatetitle", () => {
             const tText = selectedTitle.textContent;
             const value = tText === "Select title..." ? "" : tText;
-            if (
-                isFilter &&
-                !Array.from(document.querySelectorAll(".modification input")).some(
-                    (input) => input.value.trim() === value.trim()
-                )
-            )
-                clearSelection();
+            if (isFilter && !Array.from(document.querySelectorAll(".modification input")).some((input) => input.value.trim() === value.trim())) clearSelection();
             else updateDropdown();
         });
 
