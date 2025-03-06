@@ -101,7 +101,7 @@ async function fetchData() {
         const response = await fetch("https://workers.tablerus.es/calendar/everything");
         if (!response.ok) throw new Error("Network response error");
 
-        const decompressedResponse = LZString.decompressFromUTF16(await response.body());
+        const decompressedResponse = LZString.decompressFromBase64(await response.text());
 
         originalEvents = JSON.parse(decompressedResponse).flatMap(processEvent);
     } catch (error) {
