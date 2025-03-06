@@ -40,12 +40,14 @@ function processEvent(event) {
     const start = new Date(event.start.dateTime);
     const end = new Date(event.end.dateTime);
 
+    // Single-day events need no splitting.
     if (start.toDateString() === end.toDateString()) {
         return [extractDataFromEvent(event)];
     }
 
     const splitEvents = [];
 
+    // First part – not a continuation.
     const firstDayEnd = new Date(start);
     firstDayEnd.setDate(firstDayEnd.getDate() + 1);
     firstDayEnd.setHours(0, 0, 0, 0);
@@ -58,11 +60,12 @@ function processEvent(event) {
         trueEnd: {
             dateTime: end.toISOString(),
             timeZone: event.end.timeZone
-        }
+        },
+        continuation: false // first part of the event
     });
 
-    const currentDayStart = new Date(firstDayEnd);
-    currentDayStart.setHours(0, 0, 0, 0);
+    // For every subsequent day, mark them as continuations.
+    let currentDayStart = new Date(firstDayEnd);
     while (currentDayStart < end) {
         const currentDayEnd = new Date(currentDayStart);
         currentDayEnd.setDate(currentDayEnd.getDate() + 1);
@@ -85,13 +88,12 @@ function processEvent(event) {
             trueEnd: {
                 dateTime: end.toISOString(),
                 timeZone: event.end.timeZone
-            }
+            },
+            continuation: true // mark as a continuation event
         });
 
-        currentDayStart.setDate(currentDayStart.getDate() + 1);
+        currentDayStart = new Date(currentDayEnd);
     }
-
-    if (new Date(splitEvents[splitEvents.length - 1].start.dateTime).getDate() === 1) splitEvents.pop();
 
     return splitEvents;
 }
@@ -104,6 +106,29 @@ async function fetchData() {
         const decompressedResponse = LZString.decompressFromBase64(await response.text());
 
         originalEvents = JSON.parse(decompressedResponse).flatMap(processEvent);
+
+        const eventsByMonth = {};
+        originalEvents.forEach((event) => {
+            const d = new Date(event.start.dateTime);
+            const key = `${d.getFullYear()}-${d.getMonth()}`;
+            if (!eventsByMonth[key]) {
+                eventsByMonth[key] = { nonContinuation: 0 };
+            }
+            if (!event.continuation) {
+                eventsByMonth[key].nonContinuation++;
+            }
+        });
+
+        // Filter out continuation events that fall into a month with no native events.
+        originalEvents = originalEvents.filter((event) => {
+            const d = new Date(event.start.dateTime);
+            const key = `${d.getFullYear()}-${d.getMonth()}`;
+            // If this event is a continuation and the month has no non-continuation events, skip it.
+            if (event.continuation && eventsByMonth[key].nonContinuation === 0) {
+                return false;
+            }
+            return true;
+        });
     } catch (error) {
         console.error("Fetch error:", error);
     }
