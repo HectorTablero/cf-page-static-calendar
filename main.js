@@ -1,6 +1,3 @@
-// TODO: Split better when the events cross months
-// TODO: Delete the CALENDAR kv namespace and move the data to MISC
-
 let originalEvents = [];
 const calendarDiv = document.getElementById("calendar");
 const ctx = document.getElementById("chart").getContext("2d");
@@ -40,7 +37,6 @@ function processEvent(event) {
     const start = new Date(event.start.dateTime);
     const end = new Date(event.end.dateTime);
 
-    // Single-day events need no splitting.
     if (start.toDateString() === end.toDateString()) {
         return [extractDataFromEvent(event)];
     }
@@ -61,10 +57,9 @@ function processEvent(event) {
             dateTime: end.toISOString(),
             timeZone: event.end.timeZone
         },
-        continuation: false // first part of the event
+        continuation: false
     });
 
-    // For every subsequent day, mark them as continuations.
     let currentDayStart = new Date(firstDayEnd);
     while (currentDayStart < end) {
         const currentDayEnd = new Date(currentDayStart);
@@ -89,7 +84,7 @@ function processEvent(event) {
                 dateTime: end.toISOString(),
                 timeZone: event.end.timeZone
             },
-            continuation: true // mark as a continuation event
+            continuation: true
         });
 
         currentDayStart = new Date(currentDayEnd);
@@ -119,11 +114,9 @@ async function fetchData() {
             }
         });
 
-        // Filter out continuation events that fall into a month with no native events.
         originalEvents = originalEvents.filter((event) => {
             const d = new Date(event.start.dateTime);
             const key = `${d.getFullYear()}-${d.getMonth()}`;
-            // If this event is a continuation and the month has no non-continuation events, skip it.
             if (event.continuation && eventsByMonth[key].nonContinuation === 0) {
                 return false;
             }
@@ -245,6 +238,16 @@ function renderCalendar(events) {
     const currentDate = new Date(firstEventDate.getFullYear(), firstEventDate.getMonth(), 1);
 
     while (currentDate <= lastEventDate) {
+        // If it's the last month, check if there are any events from day 10 onwards
+        if (currentDate.getFullYear() === lastEventDate.getFullYear() && currentDate.getMonth() === lastEventDate.getMonth()) {
+            const hasEventsFromDay10 = events.some((event) => {
+                const d = new Date(event.start.dateTime);
+                return d.getFullYear() === currentDate.getFullYear() && d.getMonth() === currentDate.getMonth() && d.getDate() >= 10;
+            });
+            if (!hasEventsFromDay10) {
+                break;
+            }
+        }
         calendarDiv.appendChild(renderMonth(currentDate));
         currentDate.setMonth(currentDate.getMonth() + 1);
     }
