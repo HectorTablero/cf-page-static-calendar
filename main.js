@@ -1,10 +1,20 @@
 let originalEvents = [];
 const calendarDiv = document.getElementById("calendar");
-const ctx = document.getElementById("chart").getContext("2d");
+const calendarLoading = document.getElementById("calendarLoading");
+const calendarTooltip = document.getElementById("calendarTooltip");
+const overviewCtx = document.getElementById("chart").getContext("2d");
+const timelineCtx = document.getElementById("timelineChart").getContext("2d");
 const words = {};
 const hexLightness = 50;
-let chart;
+let overviewChart;
+let timelineChart;
 let isFilter = false;
+let analyticsScopeSelection = {
+    kind: "all",
+    value: "all",
+    label: "All activities"
+};
+const analyticsPalette = ["#2563eb", "#14b8a6", "#f97316", "#8b5cf6", "#ef4444", "#22c55e", "#0ea5e9", "#f59e0b"];
 const colors = {
     1: "#b0c4de", // neutral
     2: "#aee4c4", // mid-prod
@@ -19,6 +29,76 @@ const colors = {
     11: "#e5a4a5", // unprod
     default: "#e0e0e0" // not specified
 };
+
+function setCalendarLoadingState(isLoading, message = "Loading calendar data...") {
+    if (calendarLoading) {
+        calendarLoading.classList.toggle("hidden", !isLoading);
+        calendarLoading.textContent = message;
+        if (isLoading) {
+            const spinner = document.createElement("span");
+            spinner.className = "spinner";
+            calendarLoading.textContent = "";
+            calendarLoading.appendChild(spinner);
+            const text = document.createElement("span");
+            text.textContent = message;
+            calendarLoading.appendChild(text);
+        }
+    }
+
+    calendarDiv.classList.toggle("hidden", isLoading);
+}
+
+function showCalendarTooltip(text, clientX, clientY) {
+    if (!calendarTooltip) return;
+
+    const [titleText, ...detailLines] = String(text).split("\n");
+    const title = document.createElement("div");
+    title.className = "calendar-tooltip__title";
+    title.textContent = titleText;
+
+    calendarTooltip.replaceChildren(title);
+
+    if (detailLines.length) {
+        const details = document.createElement("div");
+        details.className = "calendar-tooltip__details";
+        details.textContent = detailLines.join("\n");
+        calendarTooltip.appendChild(details);
+    }
+
+    calendarTooltip.classList.remove("hidden");
+    positionCalendarTooltip(clientX, clientY);
+}
+
+function positionCalendarTooltip(clientX, clientY) {
+    if (!calendarTooltip || calendarTooltip.classList.contains("hidden")) return;
+
+    const offsetX = 16;
+    const offsetY = 18;
+    const tooltipWidth = calendarTooltip.offsetWidth || 260;
+    const tooltipHeight = calendarTooltip.offsetHeight || 120;
+
+    let left = clientX + offsetX;
+    let top = clientY + offsetY;
+
+    if (left + tooltipWidth > window.innerWidth - 12) left = clientX - tooltipWidth - offsetX;
+    if (top + tooltipHeight > window.innerHeight - 12) top = clientY - tooltipHeight - offsetY;
+
+    calendarTooltip.style.left = `${Math.max(12, left)}px`;
+    calendarTooltip.style.top = `${Math.max(12, top)}px`;
+}
+
+function hideCalendarTooltip() {
+    if (!calendarTooltip) return;
+    calendarTooltip.classList.add("hidden");
+}
+
+function scrollCalendarToEnd() {
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            calendarDiv.scrollLeft = calendarDiv.scrollWidth;
+        });
+    });
+}
 
 function getColor(colorId) {
     return colorId ? colors[colorId] || colors.default : colors.default;
@@ -94,6 +174,8 @@ function processEvent(event) {
 }
 
 async function fetchData() {
+    setCalendarLoadingState(true);
+
     try {
         const response = await fetch("https://workers.tablerus.es/calendar/everything");
         if (!response.ok) throw new Error("Network response error");
@@ -122,8 +204,14 @@ async function fetchData() {
             }
             return true;
         });
+
+        return true;
     } catch (error) {
         console.error("Fetch error:", error);
+        if (calendarLoading) {
+            setCalendarLoadingState(true, "Unable to load calendar data.");
+        }
+        return false;
     }
 }
 
@@ -159,6 +247,17 @@ function renderDay(dateD) {
         innerDiv.style.backgroundColor = event.color;
         outerDiv.appendChild(innerDiv);
 
+        if (duration < 90) {
+            const tooltipText = `${event.summary}\n${startTime} - ${endTime}`;
+            innerDiv.addEventListener("mouseenter", (eventMouse) => {
+                showCalendarTooltip(tooltipText, eventMouse.clientX, eventMouse.clientY);
+            });
+            innerDiv.addEventListener("mousemove", (eventMouse) => {
+                positionCalendarTooltip(eventMouse.clientX, eventMouse.clientY);
+            });
+            innerDiv.addEventListener("mouseleave", hideCalendarTooltip);
+        }
+
         const title = document.createElement("h4");
         title.innerText = event.summary;
         innerDiv.appendChild(title);
@@ -179,8 +278,14 @@ function renderDay(dateD) {
         if (event.summary.indexOf("+") === -1 && event.summary.trim() !== "?" && event.color !== colors.default) {
             innerDiv.style.cursor = "pointer";
             innerDiv.addEventListener("click", () => {
-                if (document.getElementById("selectedTitle").textContent.trim().toLowerCase() === event.summary.trim().toLowerCase()) document.getElementById("titleOptions").childNodes[0].click();
-                else document.getElementById("titleOptions").querySelector(`[data-value=${event.summary}]`).click();
+                const selectedTitle = document.getElementById("selectedTitle").textContent.trim().toLowerCase();
+                const escapedSummary = escapeAttributeValue(event.summary);
+                const selector = `[data-value="${escapedSummary}"]`;
+                if (selectedTitle === event.summary.trim().toLowerCase()) document.getElementById("titleOptions").childNodes[0].click();
+                else document.getElementById("titleOptions").querySelector(selector)?.click();
+
+                const matchingScope = getAnalyticsScopeOptions().find((option) => option.kind === "activity" && option.value.trim().toLowerCase() === event.summary.trim().toLowerCase());
+                if (matchingScope) setAnalyticsScopeSelection(matchingScope);
             });
         } else innerDiv.style.cursor = "not-allowed";
     });
@@ -192,12 +297,16 @@ function renderMonth(dateM) {
     const div = document.createElement("div");
     div.classList.add("relative");
 
+    const titleBar = document.createElement("div");
+    titleBar.classList.add("stickyMonthTitleBar");
+
     const h2 = document.createElement("h2");
     h2.classList.add("stickyMonthTitle");
     h2.innerHTML = `<strong>${new Date(dateM.getFullYear(), dateM.getMonth(), 1).toLocaleString("default", {
         month: "long"
     })}</strong> ${dateM.getFullYear()}`;
-    div.appendChild(h2);
+    titleBar.appendChild(h2);
+    div.appendChild(titleBar);
 
     const startDate = new Date(dateM);
     const endDate = new Date(dateM);
@@ -232,30 +341,37 @@ function renderMonth(dateM) {
 }
 
 function renderCalendar(events) {
+    if (!events.length) {
+        return;
+    }
+
     const firstEventDate = new Date(events[0].start.dateTime);
     const lastEventDate = new Date(events[events.length - 1].start.dateTime);
+    const currentMonthStart = new Date();
+    currentMonthStart.setDate(1);
+    currentMonthStart.setHours(0, 0, 0, 0);
 
     const currentDate = new Date(firstEventDate.getFullYear(), firstEventDate.getMonth(), 1);
+    const lastRenderableMonth = new Date(lastEventDate.getFullYear(), lastEventDate.getMonth(), 1);
 
-    while (currentDate <= lastEventDate) {
-        // If it's the last month, check if there are any events from day 10 onwards
-        if (currentDate.getFullYear() === lastEventDate.getFullYear() && currentDate.getMonth() === lastEventDate.getMonth()) {
-            const hasEventsFromDay10 = events.some((event) => {
-                const d = new Date(event.start.dateTime);
-                return d.getFullYear() === currentDate.getFullYear() && d.getMonth() === currentDate.getMonth() && d.getDate() >= 10;
-            });
-            if (!hasEventsFromDay10) {
-                break;
-            }
-        }
+    if (lastRenderableMonth >= currentMonthStart) {
+        lastRenderableMonth.setMonth(lastRenderableMonth.getMonth() - 1);
+    }
+
+    if (lastRenderableMonth < currentDate) {
+        return;
+    }
+
+    while (currentDate <= lastRenderableMonth) {
         calendarDiv.appendChild(renderMonth(currentDate));
         currentDate.setMonth(currentDate.getMonth() + 1);
     }
-
-    calendarDiv.scroll(1000000000, 0);
 }
 
-document.getElementById("addModificationBtn").addEventListener("click", addModification);
+let addModificationBtn = document.getElementById("addModificationBtn");
+if (addModificationBtn) {
+    addModificationBtn.addEventListener("click", addModification);
+}
 function addModification(filter, replace) {
     const modificationDiv = document.createElement("div");
     modificationDiv.className = "modification flex gap-2 items-center";
@@ -266,30 +382,31 @@ function addModification(filter, replace) {
 
     // Create dropdown button that shows selected value
     const dropdownButton = document.createElement("button");
-    dropdownButton.className = "border p-2 rounded w-64 text-left flex items-center gap-2";
+    dropdownButton.className = "mod-dropdown-button";
 
     const selectedDot = document.createElement("div");
     selectedDot.className = "w-3 h-3 rounded-full hidden";
     dropdownButton.appendChild(selectedDot);
 
     const buttonText = document.createElement("span");
+    buttonText.className = "mod-filter-label";
     buttonText.textContent = "Select a filter...";
     dropdownButton.appendChild(buttonText);
 
     // Create dropdown menu
     const dropdownMenu = document.createElement("div");
-    dropdownMenu.className = "absolute mt-1 w-64 bg-white border rounded shadow-lg hidden max-h-64 overflow-y-auto z-50";
+    dropdownMenu.className = "dropdown-menu hidden";
 
     // Create search input
     const searchInput = document.createElement("input");
     searchInput.type = "text";
-    searchInput.className = "border-b w-full p-2 sticky top-0 bg-white";
+    searchInput.className = "dropdown-search";
     searchInput.placeholder = "Search...";
     dropdownMenu.appendChild(searchInput);
 
     // Create options container
     const optionsContainer = document.createElement("div");
-    optionsContainer.className = "py-1";
+    optionsContainer.className = "dropdown-options";
     dropdownMenu.appendChild(optionsContainer);
 
     let lastModification = "";
@@ -301,7 +418,7 @@ function addModification(filter, replace) {
             .filter((key) => key.toLowerCase().includes(searchTerm.toLowerCase()) && words[key][0][2] !== colors.default && key !== "?")
             .forEach((key) => {
                 const option = document.createElement("div");
-                option.className = "flex items-center gap-2 px-3 py-2 hover:bg-gray-100 cursor-pointer";
+                option.className = "flex items-center gap-2 cursor-pointer";
 
                 const dot = document.createElement("div");
                 dot.className = "w-3 h-3 rounded-full";
@@ -359,13 +476,13 @@ function addModification(filter, replace) {
     // Create replace input
     const replaceInput = document.createElement("input");
     replaceInput.type = "text";
-    replaceInput.className = "border p-2 rounded";
+    replaceInput.className = "mod-replace-input";
     replaceInput.placeholder = "Replace with...";
     replaceInput.value = replace || "";
 
     // Create remove button
     const removeButton = document.createElement("button");
-    removeButton.className = "px-3 py-2 bg-red-500 text-white rounded";
+    removeButton.className = "mod-remove-button";
     removeButton.textContent = "×";
     removeButton.onclick = () => {
         applyModification(lastModification, lastModification);
@@ -406,8 +523,8 @@ function addModification(filter, replace) {
 function applyModification(filter, replaceValue) {
     if (!filter || filter === "Select a filter...") return;
 
-    const regex = new RegExp(filter, "g");
-    words[filter].forEach(([originalText, element, color]) => {
+    const regex = new RegExp(escapeRegExp(filter), "g");
+    (words[filter] || []).forEach(([originalText, element]) => {
         element.innerText = originalText.replace(regex, replaceValue || filter);
     });
 }
@@ -518,15 +635,191 @@ function adjustHexLightness(hex, l = 60) {
     return hslToHex(hsl.h, hsl.s, l);
 }
 
-// Should be done from the server
+function formatDurationHours(hours) {
+    if (!Number.isFinite(hours)) return "0h";
+
+    const rounded = Math.round(hours * 10) / 10;
+    if (rounded < 1) return `${Math.round(rounded * 60)}m`;
+    return `${rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1)}h`;
+}
+
+function formatDurationTooltip(hours) {
+    if (!Number.isFinite(hours)) return "0 hours 0 minutes";
+
+    const roundedHours = Math.floor(hours);
+    const minutes = Math.round((hours - roundedHours) * 60);
+    return `${roundedHours} hours ${minutes} minutes`;
+}
+
+function getEventDurationHours(event) {
+    const start = new Date(event.start.dateTime);
+    const end = new Date(event.end.dateTime);
+    return (end - start) / (1000 * 60 * 60);
+}
+
+function getMonthKeyFromDate(date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function getMonthLabelFromKey(monthKey) {
+    const [year, month] = monthKey.split("-").map(Number);
+    return new Date(year, month - 1, 1).toLocaleString("default", {
+        month: "short",
+        year: "numeric"
+    });
+}
+
+function getMonthKeys(events) {
+    if (!events.length) return [];
+
+    const sortedDates = events.map((event) => new Date(event.start.dateTime)).sort((a, b) => a - b);
+    const firstDate = new Date(sortedDates[0].getFullYear(), sortedDates[0].getMonth(), 1);
+    const lastDate = new Date(sortedDates[sortedDates.length - 1].getFullYear(), sortedDates[sortedDates.length - 1].getMonth(), 1);
+    const keys = [];
+    const current = new Date(firstDate);
+
+    while (current <= lastDate) {
+        keys.push(getMonthKeyFromDate(current));
+        current.setMonth(current.getMonth() + 1);
+    }
+
+    return keys;
+}
+
+function splitEventSummary(summary) {
+    return summary
+        .split("+")
+        .map((part) => part.trim())
+        .filter(Boolean);
+}
+
+function getCustomGroups() {
+    const customGroups = new Map();
+
+    document.querySelectorAll(".modification").forEach((mod) => {
+        const sourceTitle = (mod.querySelector(".mod-filter-label")?.textContent || "").trim();
+        const replaceValue = mod.querySelector(".mod-replace-input")?.value.trim();
+
+        if (!sourceTitle || sourceTitle === "Select a filter..." || !replaceValue) return;
+        if (isHiddenActivityTitle(replaceValue)) return;
+
+        const normalizedGroup = replaceValue.toLowerCase();
+        if (!customGroups.has(normalizedGroup)) customGroups.set(normalizedGroup, { label: replaceValue, titles: new Set() });
+        customGroups.get(normalizedGroup).titles.add(sourceTitle);
+    });
+
+    return customGroups;
+}
+
+function getMostCommonColorForTitles(titles) {
+    const colorCounts = {};
+
+    titles.forEach((title) => {
+        if (!words[title]) return;
+        words[title].forEach(([_, __, color]) => {
+            colorCounts[color] = (colorCounts[color] || 0) + 1;
+        });
+    });
+
+    const colorEntries = Object.entries(colorCounts);
+    if (!colorEntries.length) return adjustHexLightness(colors.default, hexLightness);
+
+    const mostCommon = colorEntries.reduce((best, candidate) => (candidate[1] > best[1] ? candidate : best))[0];
+    return adjustHexLightness(mostCommon, hexLightness);
+}
+
+function getSeriesColor(name, index = 0) {
+    if (words[name]) return getMostCommonColor(name);
+    return adjustHexLightness(analyticsPalette[index % analyticsPalette.length], 58);
+}
+
+function isHiddenActivityTitle(title) {
+    const normalized = String(title || "")
+        .trim()
+        .toLowerCase();
+    return !normalized || normalized === "?" || normalized === "untitled";
+}
+
+function getAnalyticsScopeOptions(searchTerm = "") {
+    const term = searchTerm.toLowerCase();
+    const options = [
+        {
+            label: "All activities",
+            value: "all",
+            kind: "all",
+            color: "#64748b",
+            titles: []
+        }
+    ];
+
+    Object.keys(words)
+        .filter((key) => !isHiddenActivityTitle(key) && key.toLowerCase().includes(term) && words[key]?.[0]?.[2] !== colors.default)
+        .sort((a, b) => a.localeCompare(b))
+        .forEach((key) => {
+            options.push({
+                label: key,
+                value: key,
+                kind: "activity",
+                color: getMostCommonColor(key),
+                titles: [key]
+            });
+        });
+
+    getCustomGroups().forEach((group, normalizedGroup) => {
+        if (isHiddenActivityTitle(group.label)) return;
+        if (!group.label.toLowerCase().includes(term)) return;
+
+        options.push({
+            label: group.label,
+            value: normalizedGroup,
+            kind: "group",
+            color: getMostCommonColorForTitles(Array.from(group.titles)),
+            titles: Array.from(group.titles)
+        });
+    });
+
+    return options;
+}
+
+function getSelectedScopeLabel() {
+    return analyticsScopeSelection.kind === "all" ? "All activities" : analyticsScopeSelection.label;
+}
+
+function setAnalyticsScopeSelection(selection, updateChartNow = true) {
+    analyticsScopeSelection = selection;
+
+    const selectedLabel = document.getElementById("analyticsScopeSelected");
+    const selectedDot = document.getElementById("analyticsScopeDot");
+
+    if (selectedLabel) selectedLabel.textContent = selection.label;
+    if (selectedDot) {
+        selectedDot.style.backgroundColor = selection.kind === "group" ? "transparent" : selection.color;
+        selectedDot.style.borderColor = selection.color;
+        selectedDot.classList.toggle("hidden", selection.kind === "all");
+    }
+
+    if (updateChartNow) updateChart();
+}
+
+function getSelectedScopeTitles(selection = analyticsScopeSelection) {
+    if (selection.kind === "activity") return [selection.value];
+    if (selection.kind === "group") return selection.titles || [];
+    return [];
+}
+
+function escapeRegExp(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function escapeAttributeValue(value) {
+    return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
 function processEventData(events) {
-    let eventGroups = {};
+    const eventGroups = {};
 
     events.forEach((event) => {
-        const start = new Date(event.start.dateTime || event.start.date);
-        const end = new Date(event.end.dateTime || event.end.date);
-        const duration = (end - start) / (1000 * 60 * 60);
-
+        const duration = getEventDurationHours(event);
         if (!eventGroups[event.color]) eventGroups[event.color] = {};
         if (!eventGroups[event.color][event.summary]) eventGroups[event.color][event.summary] = 0;
         eventGroups[event.color][event.summary] += duration;
@@ -539,159 +832,175 @@ function filterEvents(start, end, title, excludeComposed = false) {
     if (start || end || title) calendarDiv.classList.add("filtered");
     else calendarDiv.classList.remove("filtered");
 
-    const customCategories = new Map();
-    document.querySelectorAll(".modification").forEach((mod) => {
-        const sourceTitle = mod.querySelector("button span")?.textContent.trim().toLowerCase();
-        const replaceValue = mod.childNodes[1].value.trim().toLowerCase();
-        if (sourceTitle && sourceTitle !== "Select a filter..." && replaceValue) {
-            if (!customCategories.has(replaceValue)) customCategories.set(replaceValue, new Set());
-            customCategories.get(replaceValue).add(sourceTitle);
-        }
-    });
+    const customCategories = getCustomGroups();
 
     function validateEvent(event) {
         if (start && new Date(event.start.dateTime).getTime() < new Date(start).getTime()) return false;
         if (end && new Date(event.end.dateTime).getTime() > new Date(end).getTime()) return false;
+
         if (title) {
             const eventTitle = event.summary.trim().toLowerCase();
             const compareTitle = title.trim().toLowerCase();
 
             if (isFilter) {
-                if (customCategories.has(compareTitle)) {
-                    for (const sourceTitle of customCategories.get(compareTitle)) {
-                        if (excludeComposed) {
-                            if (eventTitle === sourceTitle.toLowerCase()) return true;
-                        } else if (eventTitle.split("+").some((title) => title.trim() === sourceTitle.toLowerCase())) return true;
+                const group = customCategories.get(compareTitle);
+                if (!group) return false;
+
+                for (const sourceTitle of group.titles) {
+                    const normalizedSource = sourceTitle.toLowerCase();
+                    if (excludeComposed) {
+                        if (eventTitle === normalizedSource) return true;
+                    } else if (splitEventSummary(eventTitle).some((part) => part === normalizedSource)) {
+                        return true;
                     }
                 }
+
                 return false;
             }
 
-            const directMatch = excludeComposed ? eventTitle === compareTitle : eventTitle.split("+").some((title) => title.trim() === compareTitle);
-
-            return directMatch;
+            return excludeComposed ? eventTitle === compareTitle : splitEventSummary(eventTitle).some((part) => part === compareTitle);
         }
+
         return true;
     }
 
     function validateEventWrapper(event) {
-        const ret = validateEvent(event);
-        if (ret) event.div.classList.add("selected");
-        else event.div.classList.remove("selected");
-        return ret;
+        const matches = validateEvent(event);
+        if (event.div) {
+            if (matches) event.div.classList.add("selected");
+            else event.div.classList.remove("selected");
+        }
+        return matches;
     }
 
     return originalEvents.filter((event) => validateEventWrapper(event));
 }
 
-function createApexChart(events) {
-    if (chart) chart.destroy();
-    const eventGroups = processEventData(events);
-    const rawCategories = Object.keys(eventGroups);
+function filterEventsByScope(events, selection) {
+    if (selection.kind === "all") return events;
 
-    let totalSum = 0;
-    const totals = rawCategories.map((category) => {
-        const total = Object.values(eventGroups[category]).reduce((a, b) => a + b, 0);
-        totalSum += total;
-        return {
-            category: category,
-            total: total
-        };
+    const selectedTitles = getSelectedScopeTitles(selection).map((title) => title.toLowerCase());
+    if (!selectedTitles.length) return [];
+
+    return events.filter((event) => {
+        const parts = splitEventSummary(event.summary).map((part) => part.toLowerCase());
+        return parts.some((part) => selectedTitles.includes(part));
     });
-    totals.sort((a, b) => b.total - a.total);
-    const categories = totals.map((item) => item.category);
+}
 
-    const categoriesTemp = {
+function createOverviewChart(events) {
+    const eventGroups = processEventData(events);
+    const categories = Object.keys(eventGroups).sort((a, b) => {
+        const aTotal = Object.values(eventGroups[a]).reduce((sum, value) => sum + value, 0);
+        const bTotal = Object.values(eventGroups[b]).reduce((sum, value) => sum + value, 0);
+        return bTotal - aTotal;
+    });
+
+    const categoryNames = {
         "#b0c4de": "Neutral",
         "#aee4c4": "Somewhat Productive",
         "#d0b1da": "Social",
         "#f7c2a4": "Somewhat Unproductive",
         "#f9dd9b": "Mix",
-        "#000": "",
-        "#000": "",
         "#b0b0b0": "Rest",
         "#98a8cf": "Social/Productive",
         "#9fbeaa": "Productive",
         "#e5a4a5": "Unproductive",
         "#e0e0e0": "Not Specified"
     };
-    const categoriesName = [];
-    const colors = [];
-    console.log();
-    categories.forEach((category, i) => {
-        colors.push(adjustHexLightness(category, hexLightness));
-        categoriesName.push(categoriesTemp[category]);
-        /*
-                console.log(
-                    `${categoriesTemp[category]} - ${
-                        Math.round((totals[i].total / totalSum) * 10000) / 100
-                    }%`
-                );
-                */
-    });
-    console.log();
 
+    const labels = categories.map((category) => categoryNames[category] || category);
     const seriesData = [];
 
-    categories.forEach((category, i) => {
-        const sortedTitles = Object.keys(eventGroups[category]).sort((a, b) => {
-            return eventGroups[category][a] - eventGroups[category][b];
-        });
-
+    categories.forEach((category, index) => {
+        const sortedTitles = Object.keys(eventGroups[category]).sort((a, b) => eventGroups[category][b] - eventGroups[category][a]);
         sortedTitles.forEach((title) => {
             const data = Array(categories.length).fill(0);
-            data[i] = Math.round(eventGroups[category][title] * 100) / 100;
+            data[index] = Math.round(eventGroups[category][title] * 100) / 100;
             seriesData.push({
                 name: title,
-                data: data
+                data: data,
+                color: adjustHexLightness(category, hexLightness)
             });
         });
     });
 
-    const limits = Array.from({ length: categories.length }, (_, i) => Object.keys(eventGroups[categories[i]]).length);
+    const limits = categories.map((category) => Object.keys(eventGroups[category]).length);
+    const palette = categories.map((category) => adjustHexLightness(category, hexLightness));
 
-    function getColor(seriesIndex) {
+    function getSeriesColor(seriesIndex) {
         let index = seriesIndex;
-        for (let i = 0; i < colors.length; i++) {
-            if (index < limits[i]) return colors[i];
+        for (let i = 0; i < limits.length; i++) {
+            if (index < limits[i]) return palette[i];
             index -= limits[i];
         }
-        return colors[colors.length - 1];
+
+        return palette[palette.length - 1] || analyticsPalette[0];
     }
 
-    const datasets = seriesData.map((series, index) => ({
-        label: series.name,
-        data: series.data,
-        backgroundColor: getColor(index),
-        hoverBackgroundColor: getColor(index),
-        borderWidth: 0
-    }));
-
-    chart = new Chart(ctx, {
+    const overviewConfig = {
         type: "bar",
         data: {
-            labels: categoriesName,
-            datasets: datasets
+            labels: labels.length ? labels : ["No data"],
+            datasets: seriesData.length
+                ? seriesData.map((series, index) => ({
+                      label: series.name,
+                      data: series.data,
+                      backgroundColor: getSeriesColor(index),
+                      hoverBackgroundColor: getSeriesColor(index),
+                      borderWidth: 0,
+                      borderRadius: 10,
+                      borderSkipped: false
+                  }))
+                : [
+                      {
+                          label: "No data",
+                          data: [0],
+                          backgroundColor: "rgba(148, 163, 184, 0.22)",
+                          borderWidth: 0,
+                          borderRadius: 10,
+                          borderSkipped: false
+                      }
+                  ]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            animation: {
+                duration: 420,
+                easing: "easeOutQuart"
+            },
+            layout: {
+                padding: 12
+            },
             scales: {
                 x: {
                     stacked: true,
+                    grid: {
+                        display: false
+                    },
                     ticks: {
                         maxRotation: 0,
                         minRotation: 0,
-                        autoSkip: false
+                        color: "#475569"
                     }
                 },
                 y: {
                     stacked: true,
+                    beginAtZero: true,
+                    grid: {
+                        color: "rgba(148, 163, 184, 0.12)"
+                    },
+                    ticks: {
+                        color: "#475569",
+                        callback: (value) => formatDurationHours(Number(value))
+                    },
                     title: {
                         display: true,
-                        text: "Hours Spent",
+                        text: "Hours spent",
+                        color: "#475569",
                         font: {
-                            weight: "bold"
+                            weight: "700"
                         }
                     }
                 }
@@ -699,14 +1008,11 @@ function createApexChart(events) {
             plugins: {
                 tooltip: {
                     callbacks: {
-                        title: (tooltipItem) => {
-                            return tooltipItem[0].dataset.label;
-                        },
-                        label: (tooltipItem) => {
-                            const val = tooltipItem.raw;
-                            const hours = Math.floor(val);
-                            const minutes = Math.round((val % 1) * 60);
-                            return hours + " hours " + minutes + " minutes";
+                        title: (tooltipItem) => `Category: ${tooltipItem[0].label}`,
+                        label: (tooltipItem) => `${tooltipItem.dataset.label}: ${formatDurationTooltip(Number(tooltipItem.raw))}`,
+                        footer: (tooltipItems) => {
+                            const total = tooltipItems.reduce((sum, item) => sum + Number(item.raw || 0), 0);
+                            return `Category total: ${formatDurationTooltip(total)}`;
                         }
                     }
                 },
@@ -715,12 +1021,266 @@ function createApexChart(events) {
                 }
             }
         }
-    });
+    };
+
+    if (overviewChart) {
+        overviewChart.data = overviewConfig.data;
+        overviewChart.options = overviewConfig.options;
+        overviewChart.update();
+    } else {
+        overviewChart = new Chart(overviewCtx, overviewConfig);
+    }
 }
 
-document.getElementById("startDate").addEventListener("change", updateChart);
-document.getElementById("endDate").addEventListener("change", updateChart);
-document.getElementById("excludeComposed").addEventListener("change", updateChart);
+function collectScopeAnalytics(events, selection = analyticsScopeSelection) {
+    const monthKeys = getMonthKeys(events);
+    const labels = monthKeys.map(getMonthLabelFromKey);
+    const monthIndex = new Map(monthKeys.map((key, index) => [key, index]));
+    const allMonthlyTotals = Array(monthKeys.length).fill(0);
+    const selectedMonthlyTotals = Array(monthKeys.length).fill(0);
+    const seriesTotalsByTitle = new Map();
+    const titleTotals = new Map();
+    const selectedTitles = getSelectedScopeTitles(selection);
+    const selectedTitleSet = new Set(selectedTitles.map((title) => title.toLowerCase()));
+
+    let totalHours = 0;
+    let sharedHours = 0;
+    let blockCount = 0;
+
+    events.forEach((event) => {
+        const monthKey = getMonthKeyFromDate(new Date(event.start.dateTime));
+        const index = monthIndex.get(monthKey);
+        if (index === undefined) return;
+
+        const duration = getEventDurationHours(event);
+        allMonthlyTotals[index] += duration;
+
+        if (selection.kind === "all") return;
+
+        const activities = splitEventSummary(event.summary);
+        const matchedActivities = activities.filter((activity) => selectedTitleSet.has(activity.toLowerCase()));
+        if (!matchedActivities.length) return;
+
+        blockCount += 1;
+        totalHours += duration;
+        if (activities.length > 1) sharedHours += duration;
+        selectedMonthlyTotals[index] += duration;
+
+        matchedActivities.forEach((activity) => {
+            if (!seriesTotalsByTitle.has(activity)) seriesTotalsByTitle.set(activity, Array(monthKeys.length).fill(0));
+            seriesTotalsByTitle.get(activity)[index] += duration;
+            titleTotals.set(activity, (titleTotals.get(activity) || 0) + duration);
+        });
+    });
+
+    const relevantMonthTotals = selection.kind === "all" ? allMonthlyTotals : selectedMonthlyTotals;
+    const peakIndex = relevantMonthTotals.length ? relevantMonthTotals.reduce((bestIndex, value, index) => (value > relevantMonthTotals[bestIndex] ? index : bestIndex), 0) : 0;
+    const peakHours = relevantMonthTotals[peakIndex] || 0;
+    const peakMonthLabel = monthKeys.length ? getMonthLabelFromKey(monthKeys[peakIndex]) : "—";
+    const hasData = selection.kind === "all" ? events.length > 0 : blockCount > 0;
+    const message = selection.kind === "all" ? (events.length ? "Select an activity or group to see the monthly graph." : "No events match the current filters.") : blockCount ? "" : `No events found for ${selection.label} in the current filters.`;
+
+    const series = [];
+    if (selection.kind !== "all" && blockCount > 0) {
+        const sortedTitles = Array.from(titleTotals.entries())
+            .sort((a, b) => b[1] - a[1])
+            .map(([title]) => title);
+        const titlesToShow = sortedTitles.slice(0, 8);
+
+        titlesToShow.forEach((title) => {
+            series.push({
+                label: title,
+                data: seriesTotalsByTitle.get(title) || Array(monthKeys.length).fill(0),
+                color: getSeriesColor(title, series.length)
+            });
+        });
+
+        if (sortedTitles.length > titlesToShow.length) {
+            const otherData = Array(monthKeys.length).fill(0);
+            sortedTitles.slice(8).forEach((title) => {
+                const titleData = seriesTotalsByTitle.get(title) || [];
+                titleData.forEach((value, index) => {
+                    otherData[index] += value || 0;
+                });
+            });
+
+            if (otherData.some((value) => value > 0)) {
+                series.push({
+                    label: "Other",
+                    data: otherData,
+                    color: "#94a3b8"
+                });
+            }
+        }
+    }
+
+    return {
+        selection,
+        labels,
+        monthKeys,
+        allMonthlyTotals,
+        selectedMonthlyTotals,
+        totalHours: selection.kind === "all" ? allMonthlyTotals.reduce((sum, value) => sum + value, 0) : totalHours,
+        sharedHours,
+        blockCount: selection.kind === "all" ? events.length : blockCount,
+        peakMonthLabel,
+        peakHours,
+        series,
+        hasData,
+        message
+    };
+}
+
+function createTimelineChart(events) {
+    const scopeData = collectScopeAnalytics(events);
+    const canvas = document.getElementById("timelineChart");
+    const emptyState = document.getElementById("timelineEmptyState");
+
+    if (scopeData.selection.kind === "all" || !scopeData.series.length) {
+        if (timelineChart) {
+            timelineChart.destroy();
+            timelineChart = null;
+        }
+
+        canvas.classList.add("hidden");
+        emptyState.classList.remove("hidden");
+        emptyState.textContent = scopeData.message;
+        return scopeData;
+    }
+
+    emptyState.classList.add("hidden");
+    canvas.classList.remove("hidden");
+
+    const timelineConfig = {
+        type: "line",
+        data: {
+            labels: scopeData.labels.length ? scopeData.labels : ["No data"],
+            datasets: scopeData.series.length
+                ? scopeData.series.map((series) => ({
+                      label: series.label,
+                      data: series.data,
+                      backgroundColor: "rgba(15, 23, 42, 0)",
+                      hoverBackgroundColor: "rgba(15, 23, 42, 0)",
+                      borderColor: series.color,
+                      pointBackgroundColor: series.color,
+                      pointBorderColor: series.color,
+                      pointRadius: 4,
+                      pointHoverRadius: 5,
+                      borderWidth: 2,
+                      fill: false,
+                      tension: 0.32
+                  }))
+                : [
+                      {
+                          label: "No data",
+                          data: [0],
+                          backgroundColor: "rgba(148, 163, 184, 0)",
+                          borderColor: "rgba(148, 163, 184, 0.22)",
+                          pointRadius: 0,
+                          borderWidth: 2,
+                          fill: false
+                      }
+                  ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: {
+                duration: 420,
+                easing: "easeOutQuart"
+            },
+            layout: {
+                padding: 12
+            },
+            scales: {
+                x: {
+                    grid: {
+                        display: false
+                    },
+                    ticks: {
+                        color: "#475569",
+                        maxRotation: 0,
+                        minRotation: 0
+                    }
+                },
+                y: {
+                    beginAtZero: true,
+                    grid: {
+                        color: "rgba(148, 163, 184, 0.12)"
+                    },
+                    ticks: {
+                        color: "#475569",
+                        callback: (value) => formatDurationHours(Number(value))
+                    },
+                    title: {
+                        display: true,
+                        text: "Hours spent",
+                        color: "#475569",
+                        font: {
+                            weight: "700"
+                        }
+                    }
+                }
+            },
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        title: (tooltipItem) => tooltipItem[0].label,
+                        label: (tooltipItem) => `${tooltipItem.dataset.label}: ${formatDurationHours(Number(tooltipItem.raw))}`,
+                        afterLabel: (tooltipItem) => {
+                            if (scopeData.selection.kind === "activity") {
+                                const monthIndex = scopeData.labels.indexOf(tooltipItem.label);
+                                const shared = scopeData.selectedMonthlyTotals[monthIndex] || 0;
+                                return `Scope total: ${formatDurationHours(shared)}`;
+                            }
+
+                            return "";
+                        },
+                        footer: (tooltipItems) => {
+                            const total = tooltipItems.reduce((sum, item) => sum + Number(item.raw || 0), 0);
+                            return `Month total: ${formatDurationTooltip(total)}`;
+                        }
+                    }
+                },
+                legend: {
+                    display: scopeData.series.length > 1,
+                    position: "bottom",
+                    labels: {
+                        usePointStyle: true,
+                        boxWidth: 10,
+                        boxHeight: 10,
+                        color: "#334155"
+                    }
+                }
+            }
+        }
+    };
+
+    if (timelineChart) {
+        timelineChart.data = timelineConfig.data;
+        timelineChart.options = timelineConfig.options;
+        timelineChart.update();
+    } else {
+        timelineChart = new Chart(timelineCtx, timelineConfig);
+    }
+
+    return scopeData;
+}
+
+function updateAnalyticsMetrics(events, scopeData) {
+    const totalHours = scopeData.totalHours;
+    const selectedHours = scopeData.selection.kind === "all" ? totalHours : scopeData.totalHours;
+    const label = scopeData.selection.kind === "all" ? "Visible blocks" : "Matching blocks";
+    const subtitle = scopeData.selection.kind === "all" ? "Select an activity or group to drill down" : scopeData.sharedHours > 0 ? `${formatDurationHours(scopeData.sharedHours)} in combined blocks` : "Only solo blocks";
+
+    document.getElementById("metricTotalHours").textContent = formatDurationHours(selectedHours);
+    document.getElementById("metricTotalLabel").textContent = subtitle;
+    document.getElementById("metricActivityCount").textContent = scopeData.blockCount.toString();
+    document.getElementById("metricActivityLabel").textContent = label;
+    document.getElementById("metricPeakMonth").textContent = scopeData.peakMonthLabel;
+    document.getElementById("metricPeakLabel").textContent = scopeData.selection.kind === "all" ? `${formatDurationHours(scopeData.peakHours)} in the busiest month` : `${formatDurationHours(scopeData.peakHours)} in that month`;
+}
+
 function updateChart() {
     const startDate = document.getElementById("startDate").value;
     const endDate = document.getElementById("endDate").value;
@@ -728,142 +1288,208 @@ function updateChart() {
     const excludeComposed = document.getElementById("excludeComposed").checked;
 
     const title = titleText === "Select title..." ? "" : titleText;
-    createApexChart(filterEvents(startDate, endDate, title, excludeComposed));
+    const filteredEvents = filterEvents(startDate, endDate, title, excludeComposed);
+    const scopedEvents = filterEventsByScope(filteredEvents, analyticsScopeSelection);
+
+    createOverviewChart(scopedEvents);
+    const scopeData = createTimelineChart(filteredEvents);
+    updateAnalyticsMetrics(filteredEvents, scopeData);
+}
+
+document.getElementById("startDate").addEventListener("change", updateChart);
+document.getElementById("endDate").addEventListener("change", updateChart);
+document.getElementById("excludeComposed").addEventListener("change", updateChart);
+
+function initializeTitleDropdown() {
+    const dropdownButton = document.getElementById("titleDropdown");
+    const menu = document.getElementById("titleMenu");
+    const searchInput = document.getElementById("titleSearch");
+    const optionsContainer = document.getElementById("titleOptions");
+    const selectedTitle = document.getElementById("selectedTitle");
+    const selectedDot = document.getElementById("selectedDot");
+
+    function updateDropdown() {
+        updateOptions(searchInput.value);
+    }
+
+    function clearSelection() {
+        selectedTitle.textContent = "Select title...";
+        searchInput.value = "";
+        selectedDot.classList.add("hidden");
+        menu.classList.add("hidden");
+        isFilter = false;
+        updateChart();
+        updateDropdown();
+    }
+
+    function updateOptions(searchTerm = "") {
+        optionsContainer.innerHTML = "";
+
+        const clearOption = document.createElement("div");
+        clearOption.className = "dropdown-option";
+        clearOption.textContent = "Clear selection";
+        clearOption.addEventListener("click", clearSelection);
+        optionsContainer.appendChild(clearOption);
+
+        const customCategories = new Map();
+
+        document.querySelectorAll(".modification").forEach((mod) => {
+            const sourceTitle = mod.querySelector(".mod-filter-label")?.textContent || "";
+            const replaceValue = mod.querySelector(".mod-replace-input")?.value;
+            if (sourceTitle && sourceTitle !== "Select a filter..." && replaceValue) {
+                if (!customCategories.has(replaceValue)) customCategories.set(replaceValue, new Set());
+                customCategories.get(replaceValue).add(sourceTitle);
+            }
+        });
+
+        Object.keys(words)
+            .filter((key) => !isHiddenActivityTitle(key) && key.toLowerCase().includes(searchTerm.toLowerCase()) && words[key][0][2] !== colors.default)
+            .forEach((key) => addOptionToDropdown(key, getMostCommonColor(key), false));
+
+        customCategories.forEach((sources, category) => {
+            if (isHiddenActivityTitle(category)) return;
+            if (!category.toLowerCase().includes(searchTerm.toLowerCase())) return;
+
+            const colorCounts = {};
+            Array.from(sources).forEach((realCategory) => {
+                const [color, n] = getMostCommonColor(realCategory, true);
+                colorCounts[color] = (colorCounts[color] || 0) + n;
+            });
+
+            const mostCommon = Object.keys(colorCounts).reduce((a, b) => (colorCounts[a] > colorCounts[b] ? a : b));
+            addOptionToDropdown(category, mostCommon, true);
+        });
+
+        function addOptionToDropdown(text, color, filter) {
+            if (optionsContainer.querySelector(`[data-value="${escapeAttributeValue(text)}"]`)) return;
+
+            const option = document.createElement("div");
+            option.className = "dropdown-option";
+            option.dataset.value = text;
+
+            const dot = document.createElement("span");
+            dot.className = "select-dot";
+            dot.style.backgroundColor = filter ? "transparent" : color;
+            dot.style.borderColor = color;
+            option.appendChild(dot);
+
+            const textSpan = document.createElement("span");
+            textSpan.textContent = text;
+            option.appendChild(textSpan);
+
+            option.addEventListener("click", () => {
+                selectedTitle.textContent = text;
+                selectedDot.style.backgroundColor = filter ? "transparent" : color;
+                selectedDot.style.borderColor = color;
+                selectedDot.classList.remove("hidden");
+                menu.classList.add("hidden");
+                isFilter = filter;
+                updateChart();
+            });
+
+            optionsContainer.appendChild(option);
+        }
+    }
+
+    dropdownButton.addEventListener("click", (e) => {
+        e.stopPropagation();
+        menu.classList.toggle("hidden");
+        if (!menu.classList.contains("hidden")) searchInput.focus();
+    });
+
+    searchInput.addEventListener("input", (e) => {
+        updateOptions(e.target.value);
+    });
+
+    document.addEventListener("click", () => {
+        menu.classList.add("hidden");
+    });
+
+    menu.addEventListener("click", (e) => {
+        e.stopPropagation();
+    });
+
+    document.addEventListener("updatedropdown", updateDropdown);
+
+    document.addEventListener("validatetitle", () => {
+        const currentTitle = selectedTitle.textContent;
+        const value = currentTitle === "Select title..." ? "" : currentTitle;
+        if (isFilter && !Array.from(document.querySelectorAll(".mod-replace-input")).some((input) => input.value.trim() === value.trim())) clearSelection();
+        else updateDropdown();
+    });
+
+    updateOptions();
+}
+
+function initializeAnalyticsScopeDropdown() {
+    const dropdownButton = document.getElementById("analyticsScopeDropdown");
+    const menu = document.getElementById("analyticsScopeMenu");
+    const searchInput = document.getElementById("analyticsScopeSearch");
+    const optionsContainer = document.getElementById("analyticsScopeOptions");
+    const selectedLabel = document.getElementById("analyticsScopeSelected");
+    const selectedDot = document.getElementById("analyticsScopeDot");
+
+    function updateOptions(searchTerm = "") {
+        const options = getAnalyticsScopeOptions(searchTerm);
+        optionsContainer.innerHTML = "";
+
+        options.forEach((option) => {
+            const optionButton = document.createElement("div");
+            optionButton.className = "dropdown-option";
+            optionButton.dataset.value = `${option.kind}:${option.value}`;
+
+            const dot = document.createElement("span");
+            dot.className = "select-dot";
+            dot.style.backgroundColor = option.kind === "group" ? "transparent" : option.color;
+            dot.style.borderColor = option.color;
+            optionButton.appendChild(dot);
+
+            const textSpan = document.createElement("span");
+            textSpan.textContent = option.label;
+            optionButton.appendChild(textSpan);
+
+            optionButton.addEventListener("click", () => {
+                setAnalyticsScopeSelection(option, false);
+                menu.classList.add("hidden");
+                updateChart();
+            });
+
+            optionsContainer.appendChild(optionButton);
+        });
+    }
+
+    dropdownButton.addEventListener("click", (e) => {
+        e.stopPropagation();
+        menu.classList.toggle("hidden");
+        if (!menu.classList.contains("hidden")) searchInput.focus();
+    });
+
+    searchInput.addEventListener("input", (e) => {
+        updateOptions(e.target.value);
+    });
+
+    document.addEventListener("click", () => {
+        menu.classList.add("hidden");
+    });
+
+    menu.addEventListener("click", (e) => {
+        e.stopPropagation();
+    });
+
+    document.addEventListener("validatetitle", () => {
+        updateOptions(searchInput.value);
+    });
+
+    updateOptions();
 }
 
 fetchData().then(() => {
+    if (!originalEvents.length) return;
+
     renderCalendar(originalEvents);
-    /*
-    if (words["Japanese"]) addModification("Japanese", "Languages");
-    if (words["Duolingo"]) addModification("Duolingo", "Languages");
-    if (words["Cycling"]) addModification("Cycling", "Sports");
-    if (words["Running"]) addModification("Running", "Sports");
-    if (words["Boxing"]) addModification("Boxing", "Sports");
-    if (words["Workout"]) addModification("Workout", "Sports");
-    if (words["Friends"]) addModification("Friends", "Social");
-    if (words["Friend"]) addModification("Friend", "Social");
-    if (words["Family"]) addModification("Family", "Social");
-    */
-
-    function initializeTitleDropdown() {
-        const dropdownButton = document.getElementById("titleDropdown");
-        const menu = document.getElementById("titleMenu");
-        const searchInput = document.getElementById("titleSearch");
-        const optionsContainer = document.getElementById("titleOptions");
-        const selectedTitle = document.getElementById("selectedTitle");
-        const selectedDot = document.getElementById("selectedDot");
-
-        function updateDropdown() {
-            const searchTerm = document.getElementById("titleSearch").value;
-            updateOptions(searchTerm);
-        }
-
-        function clearSelection() {
-            selectedTitle.textContent = "Select title...";
-            searchInput.value = "";
-            selectedDot.classList.add("hidden");
-            menu.classList.add("hidden");
-            isFilter = false;
-            updateChart();
-            updateDropdown();
-        }
-
-        function updateOptions(searchTerm = "") {
-            optionsContainer.innerHTML = '<div class="px-3 py-2 hover:bg-gray-100 cursor-pointer">Clear selection</div>';
-
-            const customCategories = new Map();
-
-            document.querySelectorAll(".modification").forEach((mod) => {
-                const sourceTitle = mod.querySelector("button span")?.textContent;
-                const replaceValue = mod.childNodes[1].value;
-                if (sourceTitle && sourceTitle !== "Select a filter..." && replaceValue) {
-                    if (!customCategories.has(replaceValue)) customCategories.set(replaceValue, new Set());
-                    customCategories.get(replaceValue).add(sourceTitle);
-                }
-            });
-
-            Object.keys(words)
-                .filter((key) => key.toLowerCase().includes(searchTerm.toLowerCase()) && words[key][0][2] !== colors.default && key !== "?")
-                .forEach((key) => addOptionToDropdown(key, getMostCommonColor(key), false));
-
-            customCategories.forEach((sources, category) => {
-                if (category.toLowerCase().includes(searchTerm.toLowerCase())) {
-                    const colorCounts = {};
-                    Array.from(customCategories.get(category)).forEach((realCategory) => {
-                        const [color, n] = getMostCommonColor(realCategory, true);
-                        colorCounts[color] = (colorCounts[color] || 0) + n;
-                    });
-                    const mostCommon = Object.keys(colorCounts).reduce((a, b) => (colorCounts[a] > colorCounts[b] ? a : b));
-                    addOptionToDropdown(category, mostCommon, true);
-                }
-            });
-
-            function addOptionToDropdown(text, color, filter) {
-                if (optionsContainer.querySelector(`[data-value="${text}"]`)) return;
-
-                const option = document.createElement("div");
-                option.className = "flex items-center gap-2 px-3 py-2 hover:bg-gray-100 cursor-pointer";
-                option.dataset.value = text;
-
-                const dot = document.createElement("div");
-                dot.className = "w-3 h-3 rounded-full";
-                dot.style.backgroundColor = filter ? "transparent" : color;
-                dot.style.border = `3px ${color} solid`;
-                option.appendChild(dot);
-
-                const textSpan = document.createElement("span");
-                textSpan.textContent = text;
-                option.appendChild(textSpan);
-
-                option.addEventListener("click", () => {
-                    selectedTitle.textContent = text;
-                    selectedDot.style.backgroundColor = filter ? "transparent" : color;
-                    selectedDot.style.border = `3px ${color} solid`;
-                    selectedDot.classList.remove("hidden");
-                    menu.classList.add("hidden");
-                    isFilter = filter;
-                    updateChart();
-                });
-
-                optionsContainer.appendChild(option);
-            }
-        }
-
-        dropdownButton.addEventListener("click", (e) => {
-            e.stopPropagation();
-            menu.classList.toggle("hidden");
-            if (!menu.classList.contains("hidden")) {
-                searchInput.focus();
-            }
-        });
-
-        searchInput.addEventListener("input", (e) => {
-            updateOptions(e.target.value);
-        });
-
-        document.addEventListener("click", () => {
-            menu.classList.add("hidden");
-        });
-
-        menu.addEventListener("click", (e) => {
-            e.stopPropagation();
-            if (e.target.textContent === "Clear selection") clearSelection();
-        });
-
-        document.addEventListener("updatedropdown", () => {
-            updateDropdown();
-        });
-
-        document.addEventListener("validatetitle", () => {
-            const tText = selectedTitle.textContent;
-            const value = tText === "Select title..." ? "" : tText;
-            if (isFilter && !Array.from(document.querySelectorAll(".modification input")).some((input) => input.value.trim() === value.trim())) clearSelection();
-            else updateDropdown();
-        });
-
-        updateOptions();
-    }
-
-    createApexChart(originalEvents);
+    setCalendarLoadingState(false);
+    scrollCalendarToEnd();
     initializeTitleDropdown();
+    initializeAnalyticsScopeDropdown();
+    updateChart();
 });

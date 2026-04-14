@@ -1,58 +1,161 @@
-<head>
-    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
-    <title>Calendario</title>
-    <link rel="icon" type="image/svg" href="icons/favicon.svg" />
-    <link rel="stylesheet" href="styles.css" />
-</head>
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@300..700&display=swap" rel="stylesheet" />
+        <title>Calendario</title>
+        <link rel="icon" type="image/svg+xml" href="icons/favicon.svg" />
+        <link rel="stylesheet" href="styles.css" />
+    </head>
+    <body>
+        <div class="page-shell">
+            <section class="surface-card calendar-card" id="calendarSection">
+                <div class="section-kicker section-kicker--top">
+                    <span class="material-symbols-outlined" aria-hidden="true">calendar_view_month</span>
+                    <span>Calendar</span>
+                </div>
+                <div id="calendarLoading" class="calendar-loading">
+                    <span class="spinner"></span>
+                    <span>Loading calendar data...</span>
+                </div>
+                <div id="calendar" class="calendarContainer"></div>
 
-<div id="modifications" class="flex flex-col gap-2 p-4"></div>
-<button id="addModificationBtn" class="px-4 py-2 bg-blue-500 text-white rounded mb-4 ml-4">Add Filter</button>
+                <details class="filter-card">
+                    <summary>
+                        <span class="section-kicker">
+                            <span class="material-symbols-outlined" aria-hidden="true">tune</span>
+                            <span>Filters</span>
+                        </span>
+                    </summary>
 
-<div id="calendar" class="calendarContainer"></div>
+                    <div class="card-body filter-card__body">
+                        <!-- <button id="addModificationBtn" class="action-button" type="button">
+                            <span class="material-symbols-outlined" aria-hidden="true">add_circle</span>
+                            <span>Add group</span>
+                        </button>
 
-<br />
-<br />
+                        <div id="modifications" class="modifications-list"></div> -->
 
-<div class="p-4 border rounded mb-4 mx-4">
-    <form id="filterForm" class="flex gap-4 items-center justify-center">
-        <div class="flex flex-col gap-1">
-            <label>Start Date</label>
-            <input type="datetime-local" id="startDate" class="border rounded p-2" />
+                        <form id="filterForm" class="filter-grid">
+                            <label class="field">
+                                <span class="field-label">
+                                    <span class="material-symbols-outlined" aria-hidden="true">event</span>
+                                    <span>Start date</span>
+                                </span>
+                                <input type="datetime-local" id="startDate" />
+                            </label>
+
+                            <label class="field">
+                                <span class="field-label">
+                                    <span class="material-symbols-outlined" aria-hidden="true">event_available</span>
+                                    <span>End date</span>
+                                </span>
+                                <input type="datetime-local" id="endDate" />
+                            </label>
+
+                            <div class="field field--dropdown">
+                                <span class="field-label">
+                                    <span class="material-symbols-outlined" aria-hidden="true">bookmark</span>
+                                    <span>Title</span>
+                                </span>
+
+                                <button type="button" id="titleDropdown" class="select-button">
+                                    <span id="selectedDot" class="select-dot hidden"></span>
+                                    <span id="selectedTitle" class="select-label">Select title...</span>
+                                    <span class="material-symbols-outlined select-chevron" aria-hidden="true">expand_more</span>
+                                </button>
+
+                                <div id="titleMenu" class="dropdown-menu hidden">
+                                    <input type="text" id="titleSearch" class="dropdown-search" placeholder="Search titles..." />
+                                    <div id="titleOptions" class="dropdown-options"></div>
+                                </div>
+                            </div>
+
+                            <label class="field field--toggle field--muted">
+                                <span class="field-label">
+                                    <span class="material-symbols-outlined" aria-hidden="true">block</span>
+                                    <span>Exclude composed</span>
+                                </span>
+                                <span class="toggle-row">
+                                    <input type="checkbox" id="excludeComposed" />
+                                    <span>Only exact label matches</span>
+                                </span>
+                            </label>
+                        </form>
+                    </div>
+                </details>
+            </section>
+
+            <section class="surface-card analytics-card" id="analyticsSection">
+                <span class="section-kicker section-kicker--top">
+                    <span class="material-symbols-outlined" aria-hidden="true">query_stats</span>
+                    <span>Analytics</span>
+                </span>
+
+                <div class="metrics-grid">
+                    <article class="metric-card">
+                        <span class="metric-label">
+                            <span class="material-symbols-outlined" aria-hidden="true">schedule</span>
+                            <span>Total time</span>
+                        </span>
+                        <strong id="metricTotalHours">0h</strong>
+                        <span id="metricTotalLabel">Current filter</span>
+                    </article>
+
+                    <article class="metric-card">
+                        <span class="metric-label">
+                            <span class="material-symbols-outlined" aria-hidden="true">category</span>
+                            <span>Blocks</span>
+                        </span>
+                        <strong id="metricActivityCount">0</strong>
+                        <span id="metricActivityLabel">Matching blocks</span>
+                    </article>
+
+                    <article class="metric-card">
+                        <span class="metric-label">
+                            <span class="material-symbols-outlined" aria-hidden="true">trending_up</span>
+                            <span>Peak month</span>
+                        </span>
+                        <strong id="metricPeakMonth">—</strong>
+                        <span id="metricPeakLabel">No data</span>
+                    </article>
+                </div>
+
+                <div class="analytics-grid">
+                    <article class="chart-card">
+                        <div class="chart-frame chart-frame--overview">
+                            <canvas id="chart"></canvas>
+                        </div>
+                    </article>
+
+                    <article class="chart-card chart-card--secondary">
+                        <div class="analytics-scope-wrap">
+                            <button type="button" id="analyticsScopeDropdown" class="select-button select-button--compact">
+                                <span id="analyticsScopeDot" class="select-dot hidden"></span>
+                                <span id="analyticsScopeSelected" class="select-label">All activities</span>
+                                <span class="material-symbols-outlined select-chevron" aria-hidden="true">expand_more</span>
+                            </button>
+                            <div id="analyticsScopeMenu" class="dropdown-menu hidden dropdown-menu--wide">
+                                <input type="text" id="analyticsScopeSearch" class="dropdown-search" placeholder="Search activities or groups..." />
+                                <div id="analyticsScopeOptions" class="dropdown-options"></div>
+                            </div>
+                        </div>
+                        <div class="chart-frame chart-frame--timeline">
+                            <div id="timelineEmptyState" class="analytics-empty-state hidden"></div>
+                            <canvas id="timelineChart"></canvas>
+                        </div>
+                    </article>
+                </div>
+            </section>
         </div>
 
-        <div class="flex flex-col gap-1">
-            <label>End Date</label>
-            <input type="datetime-local" id="endDate" class="border rounded p-2" />
-        </div>
+        <div id="calendarTooltip" class="calendar-tooltip hidden" aria-hidden="true"></div>
 
-        <div class="flex flex-col gap-1 relative">
-            <label>Title</label>
-            <button type="button" id="titleDropdown" class="border rounded p-2 w-64 text-left flex items-center gap-2">
-                <div id="selectedDot" class="w-3 h-3 rounded-full hidden"></div>
-                <span id="selectedTitle">Select title...</span>
-            </button>
-
-            <div id="titleMenu" class="absolute top-full mt-1 w-64 bg-white border rounded shadow-lg hidden max-h-64 overflow-y-auto z-50">
-                <input type="text" id="titleSearch" class="border-b w-full p-2 sticky top-0 bg-white" placeholder="Search titles..." />
-                <div id="titleOptions" class="py-1"></div>
-            </div>
-        </div>
-
-        <div class="flex flex-col gap-1 hidden">
-            <!-- Label to align with other options -->
-            <label>⠀</label>
-            <div class="flex items-center gap-2">
-                <input type="checkbox" id="excludeComposed" class="rounded" />
-                <label for="excludeComposed">Exclude Composed</label>
-            </div>
-        </div>
-    </form>
-</div>
-
-<div style="height: 500px; width: 90vw">
-    <canvas id="chart" width="400" height="500"></canvas>
-</div>
-
-<script src="main.js"></script>
+        <script src="main.js"></script>
+    </body>
+</html>
