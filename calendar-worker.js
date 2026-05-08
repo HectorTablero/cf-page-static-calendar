@@ -82,25 +82,41 @@ self.onmessage = async function (e) {
         const compressedText = await response.text();
         const decompressedResponse = LZString.decompressFromBase64(compressedText);
         
-        let events = JSON.parse(decompressedResponse).flatMap(event => processEvent(event, colors));
+        const rawEvents = JSON.parse(decompressedResponse);
+        const processedEvents = rawEvents.flatMap(event => processEvent(event, colors));
 
-        // Initial filtering (existing logic)
         const eventsByMonth = {};
-        events.forEach((event) => {
+        const eventsByDay = {};
+        const words = {};
+
+        processedEvents.forEach((event) => {
             const d = new Date(event.start.dateTime);
-            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-            if (!eventsByMonth[key]) {
-                eventsByMonth[key] = { nonContinuation: 0, hasDay25: false };
+            const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+            const dayKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+            
+            if (!eventsByMonth[monthKey]) {
+                eventsByMonth[monthKey] = { nonContinuation: 0, hasDay20: false };
             }
             if (!event.continuation) {
-                eventsByMonth[key].nonContinuation++;
+                eventsByMonth[monthKey].nonContinuation++;
             }
-            if (d.getDate() === 25) {
-                eventsByMonth[key].hasDay25 = true;
+            if (d.getDate() === 20) {
+                eventsByMonth[monthKey].hasDay20 = true;
             }
+
+            if (!eventsByDay[dayKey]) eventsByDay[dayKey] = [];
+            eventsByDay[dayKey].push(event);
+
+            event.summary.split("+").forEach((word) => {
+                word = word.trim();
+                if (!words[word]) words[word] = [];
+                // Store format compatible with main thread's expected structure: [summary, title_element_placeholder, color]
+                words[word].push([event.summary, null, event.color]);
+            });
         });
 
-        events = events.filter((event) => {
+        // Filter events that are only continuations in a month
+        const finalEvents = processedEvents.filter((event) => {
             const d = new Date(event.start.dateTime);
             const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
             if (event.continuation && eventsByMonth[key].nonContinuation === 0) {
@@ -109,10 +125,15 @@ self.onmessage = async function (e) {
             return true;
         });
 
-        // Identify months without any events on day 25
-        const invalidMonthKeys = Object.keys(eventsByMonth).filter(key => !eventsByMonth[key].hasDay25);
+        const invalidMonthKeys = Object.keys(eventsByMonth).filter(key => !eventsByMonth[key].hasDay20);
 
-        self.postMessage({ success: true, events, invalidMonthKeys });
+        self.postMessage({ 
+            success: true, 
+            events: finalEvents, 
+            eventsByDay, 
+            words, 
+            invalidMonthKeys 
+        });
     } catch (error) {
         self.postMessage({ success: false, error: error.message });
     }

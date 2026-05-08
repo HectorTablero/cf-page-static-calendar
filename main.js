@@ -5,7 +5,8 @@ const calendarLoading = document.getElementById("calendarLoading");
 const calendarTooltip = document.getElementById("calendarTooltip");
 const overviewCtx = document.getElementById("chart").getContext("2d");
 const timelineCtx = document.getElementById("timelineChart").getContext("2d");
-const words = {};
+let words = {};
+let eventsByDay = {};
 const hexLightness = 50;
 let overviewChart;
 let timelineChart;
@@ -123,79 +124,6 @@ function scrollCalendarToEnd() {
     });
 }
 
-function getColor(colorId) {
-    return colorId ? colors[colorId] || colors.default : colors.default;
-}
-
-function extractDataFromEvent(event) {
-    return {
-        summary: event.summary || "?",
-        color: getColor(event.colorId),
-        start: event.start,
-        end: event.end
-    };
-}
-
-function processEvent(event) {
-    const start = new Date(event.start.dateTime);
-    const end = new Date(event.end.dateTime);
-
-    if (start.toDateString() === end.toDateString()) {
-        return [extractDataFromEvent(event)];
-    }
-
-    const splitEvents = [];
-
-    // First part – not a continuation.
-    const firstDayEnd = new Date(start);
-    firstDayEnd.setDate(firstDayEnd.getDate() + 1);
-    firstDayEnd.setHours(0, 0, 0, 0);
-    splitEvents.push({
-        ...extractDataFromEvent(event),
-        end: {
-            dateTime: firstDayEnd.toISOString(),
-            timeZone: event.start.timeZone
-        },
-        trueEnd: {
-            dateTime: end.toISOString(),
-            timeZone: event.end.timeZone
-        },
-        continuation: false
-    });
-
-    let currentDayStart = new Date(firstDayEnd);
-    while (currentDayStart < end) {
-        const currentDayEnd = new Date(currentDayStart);
-        currentDayEnd.setDate(currentDayEnd.getDate() + 1);
-        currentDayEnd.setHours(0, 0, 0, 0);
-
-        splitEvents.push({
-            ...extractDataFromEvent(event),
-            start: {
-                dateTime: currentDayStart.toISOString(),
-                timeZone: event.start.timeZone
-            },
-            trueStart: {
-                dateTime: start.toISOString(),
-                timeZone: event.start.timeZone
-            },
-            end: {
-                dateTime: (currentDayEnd < end ? currentDayEnd : end).toISOString(),
-                timeZone: event.end.timeZone
-            },
-            trueEnd: {
-                dateTime: end.toISOString(),
-                timeZone: event.end.timeZone
-            },
-            continuation: true
-        });
-
-        currentDayStart = new Date(currentDayEnd);
-    }
-
-    return splitEvents;
-}
-
 async function fetchData() {
     setCalendarLoadingState(true);
 
@@ -206,6 +134,8 @@ async function fetchData() {
             if (e.data.success) {
                 originalEvents = e.data.events;
                 invalidMonthKeys = e.data.invalidMonthKeys;
+                eventsByDay = e.data.eventsByDay;
+                words = e.data.words;
                 worker.terminate();
                 resolve(true);
             } else {
@@ -230,11 +160,11 @@ async function fetchData() {
     });
 }
 
+
 function renderDay(dateD) {
-    const dayEvents = originalEvents.filter((event) => {
-        const eventDate = new Date(event.start.dateTime);
-        return eventDate.getFullYear() === dateD.getFullYear() && eventDate.getMonth() === dateD.getMonth() && eventDate.getDate() === dateD.getDate();
-    });
+    const dayKey = `${dateD.getFullYear()}-${String(dateD.getMonth() + 1).padStart(2, "0")}-${String(dateD.getDate()).padStart(2, "0")}`;
+    const dayEvents = eventsByDay[dayKey] || [];
+
     const div = document.createElement("div");
     div.classList.add("dayContainer");
 
@@ -281,12 +211,7 @@ function renderDay(dateD) {
         time.innerText = `${startTime} - ${endTime}`;
         innerDiv.appendChild(time);
 
-        const data = [event.summary, title, event.color];
-        event.summary.split("+").forEach((word) => {
-            word = word.trim();
-            if (!words[word]) words[word] = [];
-            words[word].push(data);
-        });
+        event.div = outerDiv;
 
         event.div = outerDiv;
 
@@ -362,17 +287,29 @@ function renderCalendar(events) {
 
     const firstEventDate = new Date(events[0].start.dateTime);
     const lastEventDate = new Date(events[events.length - 1].start.dateTime);
-    const currentMonthStart = new Date();
-    currentMonthStart.setDate(1);
-    currentMonthStart.setHours(0, 0, 0, 0);
-
     const currentDate = new Date(firstEventDate.getFullYear(), firstEventDate.getMonth(), 1);
     const lastRenderableMonth = new Date(lastEventDate.getFullYear(), lastEventDate.getMonth(), 1);
 
-    while (currentDate <= lastRenderableMonth) {
-        calendarDiv.appendChild(renderMonth(currentDate));
-        currentDate.setMonth(currentDate.getMonth() + 1);
+    function renderNextMonth() {
+        if (currentDate <= lastRenderableMonth) {
+            const key = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`;
+            if (!invalidMonthKeys.includes(key)) {
+                calendarDiv.appendChild(renderMonth(new Date(currentDate)));
+            }
+            currentDate.setMonth(currentDate.getMonth() + 1);
+            // Render next month in the next frame to keep UI responsive
+            requestAnimationFrame(renderNextMonth);
+        } else {
+            // Finished rendering
+            scrollCalendarToEnd();
+            setCalendarLoadingState(false);
+            initializeTitleDropdown();
+            initializeAnalyticsScopeDropdown();
+            updateChart();
+        }
     }
+
+    renderNextMonth();
 }
 
 let addModificationBtn = document.getElementById("addModificationBtn");
@@ -1504,9 +1441,4 @@ fetchData().then(() => {
     if (!originalEvents.length) return;
 
     renderCalendar(originalEvents);
-    setCalendarLoadingState(false);
-    scrollCalendarToEnd();
-    initializeTitleDropdown();
-    initializeAnalyticsScopeDropdown();
-    updateChart();
 });
