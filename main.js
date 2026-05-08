@@ -1,4 +1,5 @@
 let originalEvents = [];
+let invalidMonthKeys = [];
 const calendarDiv = document.getElementById("calendar");
 const calendarLoading = document.getElementById("calendarLoading");
 const calendarTooltip = document.getElementById("calendarTooltip");
@@ -46,6 +47,28 @@ function setCalendarLoadingState(isLoading, message = "Loading calendar data..."
     }
 
     calendarDiv.classList.toggle("hidden", isLoading);
+
+    // Toggle chart skeletons
+    const barSkeleton = document.getElementById("barChartSkeleton");
+    const lineSkeleton = document.getElementById("lineChartSkeleton");
+    if (barSkeleton) barSkeleton.classList.toggle("hidden", !isLoading);
+    if (lineSkeleton) lineSkeleton.classList.toggle("hidden", !isLoading);
+
+    // Disable/Enable filters and selectors
+    const uiElements = [
+        "startDate", "endDate", "titleDropdown", "excludeComposed", 
+        "analyticsScopeDropdown", "addModificationBtn"
+    ];
+    uiElements.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            if (el.tagName === "BUTTON" || el.tagName === "INPUT") {
+                el.disabled = isLoading;
+            }
+            el.style.opacity = isLoading ? "0.5" : "1";
+            el.style.pointerEvents = isLoading ? "none" : "auto";
+        }
+    });
 }
 
 function showCalendarTooltip(text, clientX, clientY) {
@@ -176,43 +199,35 @@ function processEvent(event) {
 async function fetchData() {
     setCalendarLoadingState(true);
 
-    try {
-        const response = await fetch("https://workers.tablerus.es/calendar/everything");
-        if (!response.ok) throw new Error("Network response error");
-
-        const decompressedResponse = LZString.decompressFromBase64(await response.text());
-
-        originalEvents = JSON.parse(decompressedResponse).flatMap(processEvent);
-
-        const eventsByMonth = {};
-        originalEvents.forEach((event) => {
-            const d = new Date(event.start.dateTime);
-            const key = `${d.getFullYear()}-${d.getMonth()}`;
-            if (!eventsByMonth[key]) {
-                eventsByMonth[key] = { nonContinuation: 0 };
+    return new Promise((resolve) => {
+        const worker = new Worker("calendar-worker.js");
+        
+        worker.onmessage = function(e) {
+            if (e.data.success) {
+                originalEvents = e.data.events;
+                invalidMonthKeys = e.data.invalidMonthKeys;
+                worker.terminate();
+                resolve(true);
+            } else {
+                console.error("Worker error:", e.data.error);
+                setCalendarLoadingState(true, "Unable to load calendar data.");
+                worker.terminate();
+                resolve(false);
             }
-            if (!event.continuation) {
-                eventsByMonth[key].nonContinuation++;
-            }
-        });
+        };
 
-        originalEvents = originalEvents.filter((event) => {
-            const d = new Date(event.start.dateTime);
-            const key = `${d.getFullYear()}-${d.getMonth()}`;
-            if (event.continuation && eventsByMonth[key].nonContinuation === 0) {
-                return false;
-            }
-            return true;
-        });
-
-        return true;
-    } catch (error) {
-        console.error("Fetch error:", error);
-        if (calendarLoading) {
+        worker.onerror = function(error) {
+            console.error("Worker generic error:", error);
             setCalendarLoadingState(true, "Unable to load calendar data.");
-        }
-        return false;
-    }
+            worker.terminate();
+            resolve(false);
+        };
+
+        worker.postMessage({
+            url: "https://workers.tablerus.es/calendar/everything",
+            colors: colors
+        });
+    });
 }
 
 function renderDay(dateD) {
@@ -353,14 +368,6 @@ function renderCalendar(events) {
 
     const currentDate = new Date(firstEventDate.getFullYear(), firstEventDate.getMonth(), 1);
     const lastRenderableMonth = new Date(lastEventDate.getFullYear(), lastEventDate.getMonth(), 1);
-
-    if (lastRenderableMonth >= currentMonthStart) {
-        lastRenderableMonth.setMonth(lastRenderableMonth.getMonth() - 1);
-    }
-
-    if (lastRenderableMonth < currentDate) {
-        return;
-    }
 
     while (currentDate <= lastRenderableMonth) {
         calendarDiv.appendChild(renderMonth(currentDate));
@@ -679,7 +686,10 @@ function getMonthKeys(events) {
     const current = new Date(firstDate);
 
     while (current <= lastDate) {
-        keys.push(getMonthKeyFromDate(current));
+        const key = getMonthKeyFromDate(current);
+        if (!invalidMonthKeys.includes(key)) {
+            keys.push(key);
+        }
         current.setMonth(current.getMonth() + 1);
     }
 
@@ -819,6 +829,10 @@ function processEventData(events) {
     const eventGroups = {};
 
     events.forEach((event) => {
+        const eventDate = new Date(event.start.dateTime);
+        const monthKey = getMonthKeyFromDate(eventDate);
+        if (invalidMonthKeys.includes(monthKey)) return;
+
         const duration = getEventDurationHours(event);
         if (!eventGroups[event.color]) eventGroups[event.color] = {};
         if (!eventGroups[event.color][event.summary]) eventGroups[event.color][event.summary] = 0;
@@ -1048,7 +1062,10 @@ function collectScopeAnalytics(events, selection = analyticsScopeSelection) {
     let blockCount = 0;
 
     events.forEach((event) => {
-        const monthKey = getMonthKeyFromDate(new Date(event.start.dateTime));
+        const eventDate = new Date(event.start.dateTime);
+        const monthKey = getMonthKeyFromDate(eventDate);
+        if (invalidMonthKeys.includes(monthKey)) return;
+
         const index = monthIndex.get(monthKey);
         if (index === undefined) return;
 

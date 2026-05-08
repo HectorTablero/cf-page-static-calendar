@@ -522,6 +522,93 @@ body {
     min-height: 420px;
 }
 
+.chart-skeleton {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    padding: 32px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    z-index: 5;
+    background: rgba(255, 255, 255, 0.4);
+}
+
+.chart-skeleton svg {
+    width: 100%;
+    height: 100%;
+}
+
+.bar-skeleton .bar {
+    fill: rgba(148, 163, 184, 0.18);
+    transform-origin: bottom;
+}
+
+.bar-skeleton .bar:nth-child(1) { animation: bar1-rotate 6s infinite ease-in-out; }
+.bar-skeleton .bar:nth-child(2) { animation: bar2-rotate 6s infinite ease-in-out; }
+.bar-skeleton .bar:nth-child(3) { animation: bar3-rotate 6s infinite ease-in-out; }
+.bar-skeleton .bar:nth-child(4) { animation: bar4-rotate 6s infinite ease-in-out; }
+.bar-skeleton .bar:nth-child(5) { animation: bar5-rotate 6s infinite ease-in-out; }
+.bar-skeleton .bar:nth-child(6) { animation: bar6-rotate 6s infinite ease-in-out; }
+.bar-skeleton .bar:nth-child(7) { animation: bar7-rotate 6s infinite ease-in-out; }
+.bar-skeleton .bar:nth-child(8) { animation: bar8-rotate 6s infinite ease-in-out; }
+.bar-skeleton .bar:nth-child(9) { animation: bar9-rotate 6s infinite ease-in-out; }
+
+@keyframes bar1-rotate { 0%, 20%, 100% { transform: scaleY(0.8); } 30%, 50% { transform: scaleY(0.3); } 60%, 80% { transform: scaleY(0.6); } }
+@keyframes bar2-rotate { 0%, 20%, 100% { transform: scaleY(0.4); } 30%, 50% { transform: scaleY(0.9); } 60%, 80% { transform: scaleY(0.5); } }
+@keyframes bar3-rotate { 0%, 20%, 100% { transform: scaleY(0.9); } 30%, 50% { transform: scaleY(0.5); } 60%, 80% { transform: scaleY(0.3); } }
+@keyframes bar4-rotate { 0%, 20%, 100% { transform: scaleY(0.6); } 30%, 50% { transform: scaleY(0.8); } 60%, 80% { transform: scaleY(0.9); } }
+@keyframes bar5-rotate { 0%, 20%, 100% { transform: scaleY(0.7); } 30%, 50% { transform: scaleY(0.4); } 60%, 80% { transform: scaleY(0.8); } }
+@keyframes bar6-rotate { 0%, 20%, 100% { transform: scaleY(0.5); } 30%, 50% { transform: scaleY(0.7); } 60%, 80% { transform: scaleY(0.4); } }
+@keyframes bar7-rotate { 0%, 20%, 100% { transform: scaleY(0.8); } 30%, 50% { transform: scaleY(0.6); } 60%, 80% { transform: scaleY(0.7); } }
+@keyframes bar8-rotate { 0%, 20%, 100% { transform: scaleY(0.3); } 30%, 50% { transform: scaleY(0.9); } 60%, 80% { transform: scaleY(0.5); } }
+@keyframes bar9-rotate { 0%, 20%, 100% { transform: scaleY(0.6); } 30%, 50% { transform: scaleY(0.4); } 60%, 80% { transform: scaleY(0.9); } }
+
+.line-skeleton .animated-line {
+    stroke: rgba(148, 163, 184, 0.12);
+    stroke-width: 3px;
+    animation: line-path-rotate 6s infinite ease-in-out;
+}
+
+.line-skeleton .point {
+    stroke: rgba(148, 163, 184, 0.22);
+    stroke-width: 10px;
+    stroke-linecap: round;
+}
+
+.line-skeleton .point.p0 { animation: p0-rotate 6s infinite ease-in-out; }
+.line-skeleton .point.p1 { animation: p1-rotate 6s infinite ease-in-out; }
+.line-skeleton .point.p2 { animation: p2-rotate 6s infinite ease-in-out; }
+.line-skeleton .point.p3 { animation: p3-rotate 6s infinite ease-in-out; }
+.line-skeleton .point.p4 { animation: p4-rotate 6s infinite ease-in-out; }
+.line-skeleton .point.p5 { animation: p5-rotate 6s infinite ease-in-out; }
+.line-skeleton .point.p6 { animation: p6-rotate 6s infinite ease-in-out; }
+.line-skeleton .point.p7 { animation: p7-rotate 6s infinite ease-in-out; }
+.line-skeleton .point.p8 { animation: p8-rotate 6s infinite ease-in-out; }
+.line-skeleton .point.p9 { animation: p9-rotate 6s infinite ease-in-out; }
+.line-skeleton .point.p10 { animation: p10-rotate 6s infinite ease-in-out; }
+
+@keyframes p0-rotate { 0%, 20%, 100% { transform: translateY(20px); } 30%, 50% { transform: translateY(-40px); } 60%, 80% { transform: translateY(10px); } }
+@keyframes p1-rotate { 0%, 20%, 100% { transform: translateY(-30px); } 30%, 50% { transform: translateY(50px); } 60%, 80% { transform: translateY(-20px); } }
+@keyframes p2-rotate { 0%, 20%, 100% { transform: translateY(40px); } 30%, 50% { transform: translateY(-10px); } 60%, 80% { transform: translateY(30px); } }
+@keyframes p3-rotate { 0%, 20%, 100% { transform: translateY(-10px); } 30%, 50% { transform: translateY(30px); } 60%, 80% { transform: translateY(-50px); } }
+@keyframes p4-rotate { 0%, 20%, 100% { transform: translateY(-50px); } 30%, 50% { transform: translateY(-20px); } 60%, 80% { transform: translateY(40px); } }
+@keyframes p5-rotate { 0%, 20%, 100% { transform: translateY(20px); } 30%, 50% { transform: translateY(60px); } 60%, 80% { transform: translateY(-30px); } }
+@keyframes p6-rotate { 0%, 20%, 100% { transform: translateY(40px); } 30%, 50% { transform: translateY(-30px); } 60%, 80% { transform: translateY(50px); } }
+@keyframes p7-rotate { 0%, 20%, 100% { transform: translateY(-30px); } 30%, 50% { transform: translateY(40px); } 60%, 80% { transform: translateY(-10px); } }
+@keyframes p8-rotate { 0%, 20%, 100% { transform: translateY(10px); } 30%, 50% { transform: translateY(-50px); } 60%, 80% { transform: translateY(20px); } }
+@keyframes p9-rotate { 0%, 20%, 100% { transform: translateY(-40px); } 30%, 50% { transform: translateY(10px); } 60%, 80% { transform: translateY(-60px); } }
+@keyframes p10-rotate { 0%, 20%, 100% { transform: translateY(30px); } 30%, 50% { transform: translateY(-20px); } 60%, 80% { transform: translateY(40px); } }
+
+@keyframes line-path-rotate {
+    0%, 20%, 100% { d: path("M6,170 C25,170 25,120 45,120 C65,120 65,190 84,190 C104,190 104,140 123,140 C143,140 143,100 162,100 C182,100 182,170 201,170 C221,170 221,190 240,190 C260,190 260,120 279,120 C299,120 299,160 318,160 C338,160 338,110 357,110 C376,110 376,180 394,180"); }
+    30%, 50% { d: path("M6,110 C25,110 25,200 45,200 C65,200 65,140 84,140 C104,140 104,180 123,180 C143,180 143,130 162,130 C182,130 182,210 201,210 C221,210 221,120 240,120 C260,120 260,190 279,190 C299,190 299,100 318,100 C338,100 338,160 357,160 C376,160 376,130 394,130"); }
+    60%, 80% { d: path("M6,160 C25,160 25,130 45,130 C65,130 65,180 84,180 C104,180 104,100 123,100 C143,100 143,190 162,190 C182,190 182,120 201,120 C221,120 221,200 240,200 C260,200 260,140 279,140 C299,140 299,170 318,170 C338,170 338,90 357,90 C376,90 376,190 394,190"); }
+}
+
 .analytics-empty-state {
     min-height: 420px;
     display: grid;

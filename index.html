@@ -4,7 +4,7 @@
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@300..700&display=swap" rel="stylesheet" />
@@ -129,6 +129,19 @@
                 <div class="analytics-grid">
                     <article class="chart-card">
                         <div class="chart-frame chart-frame--overview">
+                            <div id="barChartSkeleton" class="chart-skeleton bar-skeleton hidden">
+                                <svg viewBox="0 0 400 300" preserveAspectRatio="none">
+                                    <rect class="bar" x="28" y="100" width="25" height="200" rx="6" />
+                                    <rect class="bar" x="68" y="50" width="25" height="250" rx="6" />
+                                    <rect class="bar" x="108" y="150" width="25" height="150" rx="6" />
+                                    <rect class="bar" x="148" y="80" width="25" height="220" rx="6" />
+                                    <rect class="bar" x="188" y="120" width="25" height="180" rx="6" />
+                                    <rect class="bar" x="228" y="40" width="25" height="260" rx="6" />
+                                    <rect class="bar" x="268" y="110" width="25" height="190" rx="6" />
+                                    <rect class="bar" x="308" y="70" width="25" height="230" rx="6" />
+                                    <rect class="bar" x="348" y="130" width="25" height="170" rx="6" />
+                                </svg>
+                            </div>
                             <canvas id="chart"></canvas>
                         </div>
                     </article>
@@ -146,6 +159,22 @@
                             </div>
                         </div>
                         <div class="chart-frame chart-frame--timeline">
+                            <div id="lineChartSkeleton" class="chart-skeleton line-skeleton hidden">
+                                <svg viewBox="0 0 400 300" preserveAspectRatio="none">
+                                    <path class="animated-line" d="M6,150 C25,150 25,150 45,150 C65,150 65,150 84,150 C104,150 104,150 123,150 C143,150 143,150 162,150 C182,150 182,150 201,150 C221,150 221,150 240,150 C260,150 260,150 279,150 C299,150 299,150 318,150 C338,150 338,150 357,150 C376,150 376,150 394,150" fill="none" vector-effect="non-scaling-stroke" />
+                                    <path class="point p0" d="M6,150 L6.01,150" vector-effect="non-scaling-stroke" />
+                                    <path class="point p1" d="M45,150 L45.01,150" vector-effect="non-scaling-stroke" />
+                                    <path class="point p2" d="M84,150 L84.01,150" vector-effect="non-scaling-stroke" />
+                                    <path class="point p3" d="M123,150 L123.01,150" vector-effect="non-scaling-stroke" />
+                                    <path class="point p4" d="M162,150 L162.01,150" vector-effect="non-scaling-stroke" />
+                                    <path class="point p5" d="M201,150 L201.01,150" vector-effect="non-scaling-stroke" />
+                                    <path class="point p6" d="M240,150 L240.01,150" vector-effect="non-scaling-stroke" />
+                                    <path class="point p7" d="M279,150 L279.01,150" vector-effect="non-scaling-stroke" />
+                                    <path class="point p8" d="M318,150 L318.01,150" vector-effect="non-scaling-stroke" />
+                                    <path class="point p9" d="M357,150 L357.01,150" vector-effect="non-scaling-stroke" />
+                                    <path class="point p10" d="M394,150 L394.01,150" vector-effect="non-scaling-stroke" />
+                                </svg>
+                            </div>
                             <div id="timelineEmptyState" class="analytics-empty-state hidden"></div>
                             <canvas id="timelineChart"></canvas>
                         </div>
