@@ -128,14 +128,15 @@ async function fetchData() {
     setCalendarLoadingState(true);
 
     return new Promise((resolve) => {
-        const worker = new Worker("calendar-worker.js");
+        // Cache bust the worker to ensure we get the latest version with grouping support
+        const worker = new Worker("calendar-worker.js?v=" + new Date().getTime());
         
         worker.onmessage = function(e) {
             if (e.data.success) {
-                originalEvents = e.data.events;
-                invalidMonthKeys = e.data.invalidMonthKeys;
-                eventsByDay = e.data.eventsByDay;
-                words = e.data.words;
+                originalEvents = e.data.events || [];
+                invalidMonthKeys = e.data.invalidMonthKeys || [];
+                eventsByDay = e.data.eventsByDay || {};
+                words = e.data.words || {};
                 worker.terminate();
                 resolve(true);
             } else {
@@ -210,8 +211,6 @@ function renderDay(dateD) {
         const time = document.createElement("p");
         time.innerText = `${startTime} - ${endTime}`;
         innerDiv.appendChild(time);
-
-        event.div = outerDiv;
 
         event.div = outerDiv;
 
