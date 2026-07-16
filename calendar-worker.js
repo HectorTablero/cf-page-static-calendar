@@ -81,9 +81,9 @@ self.onmessage = async function (e) {
 
         const compressedText = await response.text();
         const decompressedResponse = LZString.decompressFromBase64(compressedText);
-        
+
         const rawEvents = JSON.parse(decompressedResponse);
-        const processedEvents = rawEvents.flatMap(event => processEvent(event, colors));
+        const processedEvents = rawEvents.flatMap((event) => processEvent(event, colors));
 
         const eventsByMonth = {};
         const eventsByDay = {};
@@ -93,7 +93,7 @@ self.onmessage = async function (e) {
             const d = new Date(event.start.dateTime);
             const monthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
             const dayKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-            
+
             if (!eventsByMonth[monthKey]) {
                 eventsByMonth[monthKey] = { nonContinuation: 0, hasDay20: false };
             }
@@ -101,6 +101,11 @@ self.onmessage = async function (e) {
                 eventsByMonth[monthKey].nonContinuation++;
             }
             if (d.getDate() === 20) {
+                // I always update the database entries in the first 1-6 days of the next month, so the
+                // hasDay20 variable is a not very elegant but pragmatic way of ensuring full months only
+                //
+                // NOTE: Every day is logged, at the very least with "?", so having no events on the 20th
+                // in a complete month is impossible
                 eventsByMonth[monthKey].hasDay20 = true;
             }
 
@@ -125,14 +130,14 @@ self.onmessage = async function (e) {
             return true;
         });
 
-        const invalidMonthKeys = Object.keys(eventsByMonth).filter(key => !eventsByMonth[key].hasDay20);
+        const invalidMonthKeys = Object.keys(eventsByMonth).filter((key) => !eventsByMonth[key].hasDay20);
 
-        self.postMessage({ 
-            success: true, 
-            events: finalEvents, 
-            eventsByDay, 
-            words, 
-            invalidMonthKeys 
+        self.postMessage({
+            success: true,
+            events: finalEvents,
+            eventsByDay,
+            words,
+            invalidMonthKeys
         });
     } catch (error) {
         self.postMessage({ success: false, error: error.message });

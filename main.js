@@ -10,7 +10,6 @@ let eventsByDay = {};
 const hexLightness = 50;
 let overviewChart;
 let timelineChart;
-let isFilter = false;
 let analyticsScopeSelection = {
     kind: "all",
     value: "all",
@@ -68,11 +67,8 @@ function setCalendarLoadingState(isLoading, message = "Loading calendar data..."
     if (lineSkeleton) lineSkeleton.classList.toggle("hidden", !isLoading);
 
     // Disable/Enable filters and selectors
-    const uiElements = [
-        "startDate", "endDate", "titleDropdown", "excludeComposed", 
-        "analyticsScopeDropdown", "addModificationBtn"
-    ];
-    uiElements.forEach(id => {
+    const uiElements = ["startDate", "endDate", "titleDropdown", "excludeComposed", "analyticsScopeDropdown"];
+    uiElements.forEach((id) => {
         const el = document.getElementById(id);
         if (el) {
             if (el.tagName === "BUTTON" || el.tagName === "INPUT") {
@@ -142,8 +138,8 @@ async function fetchData() {
     return new Promise((resolve) => {
         // Cache bust the worker to ensure we get the latest version with grouping support
         const worker = new Worker("calendar-worker.js?v=" + new Date().getTime());
-        
-        worker.onmessage = function(e) {
+
+        worker.onmessage = function (e) {
             if (e.data.success) {
                 originalEvents = e.data.events || [];
                 invalidMonthKeys = e.data.invalidMonthKeys || [];
@@ -159,7 +155,7 @@ async function fetchData() {
             }
         };
 
-        worker.onerror = function(error) {
+        worker.onerror = function (error) {
             console.error("Worker generic error:", error);
             setCalendarLoadingState(true, "Unable to load calendar data.");
             worker.terminate();
@@ -172,7 +168,6 @@ async function fetchData() {
         });
     });
 }
-
 
 function renderDay(dateD) {
     const dayKey = `${dateD.getFullYear()}-${String(dateD.getMonth() + 1).padStart(2, "0")}-${String(dateD.getDate()).padStart(2, "0")}`;
@@ -323,168 +318,7 @@ function renderCalendar(events) {
     renderNextMonth();
 }
 
-let addModificationBtn = document.getElementById("addModificationBtn");
-if (addModificationBtn) {
-    addModificationBtn.addEventListener("click", addModification);
-}
-function addModification(filter, replace) {
-    const modificationDiv = document.createElement("div");
-    modificationDiv.className = "modification flex gap-2 items-center";
-
-    // Create custom dropdown container
-    const dropdownContainer = document.createElement("div");
-    dropdownContainer.className = "relative";
-
-    // Create dropdown button that shows selected value
-    const dropdownButton = document.createElement("button");
-    dropdownButton.className = "mod-dropdown-button";
-
-    const selectedDot = document.createElement("div");
-    selectedDot.className = "w-3 h-3 rounded-full hidden";
-    dropdownButton.appendChild(selectedDot);
-
-    const buttonText = document.createElement("span");
-    buttonText.className = "mod-filter-label";
-    buttonText.textContent = "Select a filter...";
-    dropdownButton.appendChild(buttonText);
-
-    // Create dropdown menu
-    const dropdownMenu = document.createElement("div");
-    dropdownMenu.className = "dropdown-menu hidden";
-
-    // Create search input
-    const searchInput = document.createElement("input");
-    searchInput.type = "text";
-    searchInput.className = "dropdown-search";
-    searchInput.placeholder = "Search...";
-    dropdownMenu.appendChild(searchInput);
-
-    // Create options container
-    const optionsContainer = document.createElement("div");
-    optionsContainer.className = "dropdown-options";
-    dropdownMenu.appendChild(optionsContainer);
-
-    let lastModification = "";
-    let lastReplaceValue = "";
-
-    const updateOptions = (searchTerm = "") => {
-        optionsContainer.innerHTML = "";
-        Object.keys(words)
-            .filter((key) => key.toLowerCase().includes(searchTerm.toLowerCase()) && words[key][0][2] !== colors.default && key !== "?")
-            .forEach((key) => {
-                const option = document.createElement("div");
-                option.className = "flex items-center gap-2 cursor-pointer";
-
-                const dot = document.createElement("div");
-                dot.className = "w-3 h-3 rounded-full";
-                dot.style.backgroundColor = getMostCommonColor(key);
-                option.appendChild(dot);
-
-                const text = document.createElement("span");
-                text.textContent = key;
-                option.appendChild(text);
-
-                const onclick = () => {
-                    buttonText.textContent = key;
-                    selectedDot.style.backgroundColor = getMostCommonColor(key);
-                    selectedDot.classList.remove("hidden");
-                    dropdownMenu.classList.add("hidden");
-                    applyModification(lastModification, lastModification);
-                    applyModification(key, replaceInput.value);
-                    const titleText = document.getElementById("selectedTitle").textContent;
-                    const title = (titleText === "Select title..." ? "" : titleText).trim();
-                    if (lastModification === title || key === title || lastReplaceValue === title) updateChart();
-                    lastModification = key;
-                };
-
-                if (key === filter) onclick();
-
-                option.addEventListener("click", onclick);
-
-                optionsContainer.appendChild(option);
-            });
-    };
-
-    // Toggle dropdown
-    dropdownButton.addEventListener("click", (e) => {
-        e.stopPropagation();
-        dropdownMenu.classList.toggle("hidden");
-        if (!dropdownMenu.classList.contains("hidden")) {
-            searchInput.focus();
-        }
-    });
-
-    // Handle search
-    searchInput.addEventListener("input", (e) => {
-        updateOptions(e.target.value);
-    });
-
-    // Close dropdown when clicking outside
-    document.addEventListener("click", () => {
-        dropdownMenu.classList.add("hidden");
-    });
-
-    dropdownMenu.addEventListener("click", (e) => {
-        e.stopPropagation();
-    });
-
-    // Create replace input
-    const replaceInput = document.createElement("input");
-    replaceInput.type = "text";
-    replaceInput.className = "mod-replace-input";
-    replaceInput.placeholder = "Replace with...";
-    replaceInput.value = replace || "";
-
-    // Create remove button
-    const removeButton = document.createElement("button");
-    removeButton.className = "mod-remove-button";
-    removeButton.textContent = "×";
-    removeButton.onclick = () => {
-        applyModification(lastModification, lastModification);
-        const titleText = document.getElementById("selectedTitle").textContent;
-        const title = (titleText === "Select title..." ? "" : titleText).trim();
-        modificationDiv.remove();
-        document.dispatchEvent(new Event("validatetitle"));
-        if (lastReplaceValue === title) updateChart();
-    };
-
-    // Handle replace input changes
-    replaceInput.addEventListener("input", (e) => {
-        const selectedValue = buttonText.textContent;
-        if (selectedValue !== "Select a filter...") {
-            const newReplaceValue = e.target.value.trim();
-            applyModification(selectedValue, newReplaceValue);
-            document.dispatchEvent(new Event("validatetitle"));
-            const titleText = document.getElementById("selectedTitle").textContent;
-            const title = titleText === "Select title..." ? "" : titleText;
-            if (lastReplaceValue === title || newReplaceValue === title) updateChart();
-            lastModification = selectedValue;
-            lastReplaceValue = newReplaceValue;
-        }
-    });
-
-    // Initial population of options
-    updateOptions();
-
-    // Assemble the components
-    dropdownContainer.appendChild(dropdownButton);
-    dropdownContainer.appendChild(dropdownMenu);
-    modificationDiv.appendChild(dropdownContainer);
-    modificationDiv.appendChild(replaceInput);
-    modificationDiv.appendChild(removeButton);
-    document.getElementById("modifications").appendChild(modificationDiv);
-}
-
-function applyModification(filter, replaceValue) {
-    if (!filter || filter === "Select a filter...") return;
-
-    const regex = new RegExp(escapeRegExp(filter), "g");
-    (words[filter] || []).forEach(([originalText, element]) => {
-        element.innerText = originalText.replace(regex, replaceValue || filter);
-    });
-}
-
-function getMostCommonColor(key, retNum) {
+function getMostCommonColor(key) {
     const overrides = {
         youtube: "#e5a4a5", // red
         discord: "#e5a4a5", // red
@@ -504,7 +338,6 @@ function getMostCommonColor(key, retNum) {
     });
 
     const mostCommon = Object.keys(colorCounts).reduce((a, b) => (colorCounts[a] > colorCounts[b] ? a : b));
-    if (retNum) return [adjustHexLightness(mostCommon, hexLightness), colorCounts[mostCommon]];
     return adjustHexLightness(mostCommon, hexLightness);
 }
 
@@ -651,41 +484,6 @@ function splitEventSummary(summary) {
         .filter(Boolean);
 }
 
-function getCustomGroups() {
-    const customGroups = new Map();
-
-    document.querySelectorAll(".modification").forEach((mod) => {
-        const sourceTitle = (mod.querySelector(".mod-filter-label")?.textContent || "").trim();
-        const replaceValue = mod.querySelector(".mod-replace-input")?.value.trim();
-
-        if (!sourceTitle || sourceTitle === "Select a filter..." || !replaceValue) return;
-        if (isHiddenActivityTitle(replaceValue)) return;
-
-        const normalizedGroup = replaceValue.toLowerCase();
-        if (!customGroups.has(normalizedGroup)) customGroups.set(normalizedGroup, { label: replaceValue, titles: new Set() });
-        customGroups.get(normalizedGroup).titles.add(sourceTitle);
-    });
-
-    return customGroups;
-}
-
-function getMostCommonColorForTitles(titles) {
-    const colorCounts = {};
-
-    titles.forEach((title) => {
-        if (!words[title]) return;
-        words[title].forEach(([_, __, color]) => {
-            colorCounts[color] = (colorCounts[color] || 0) + 1;
-        });
-    });
-
-    const colorEntries = Object.entries(colorCounts);
-    if (!colorEntries.length) return adjustHexLightness(colors.default, hexLightness);
-
-    const mostCommon = colorEntries.reduce((best, candidate) => (candidate[1] > best[1] ? candidate : best))[0];
-    return adjustHexLightness(mostCommon, hexLightness);
-}
-
 function getSeriesColor(name, index = 0) {
     if (words[name]) return getMostCommonColor(name);
     return adjustHexLightness(analyticsPalette[index % analyticsPalette.length], 58);
@@ -722,19 +520,6 @@ function getAnalyticsScopeOptions(searchTerm = "") {
                 titles: [key]
             });
         });
-
-    getCustomGroups().forEach((group, normalizedGroup) => {
-        if (isHiddenActivityTitle(group.label)) return;
-        if (!group.label.toLowerCase().includes(term)) return;
-
-        options.push({
-            label: group.label,
-            value: normalizedGroup,
-            kind: "group",
-            color: getMostCommonColorForTitles(Array.from(group.titles)),
-            titles: Array.from(group.titles)
-        });
-    });
 
     return options;
 }
@@ -794,8 +579,6 @@ function filterEvents(start, end, title, excludeComposed = false) {
     if (start || end || title) calendarDiv.classList.add("filtered");
     else calendarDiv.classList.remove("filtered");
 
-    const customCategories = getCustomGroups();
-
     function validateEvent(event) {
         if (start && new Date(event.start.dateTime).getTime() < new Date(start).getTime()) return false;
         if (end && new Date(event.end.dateTime).getTime() > new Date(end).getTime()) return false;
@@ -803,23 +586,6 @@ function filterEvents(start, end, title, excludeComposed = false) {
         if (title) {
             const eventTitle = event.summary.trim().toLowerCase();
             const compareTitle = title.trim().toLowerCase();
-
-            if (isFilter) {
-                const group = customCategories.get(compareTitle);
-                if (!group) return false;
-
-                for (const sourceTitle of group.titles) {
-                    const normalizedSource = sourceTitle.toLowerCase();
-                    if (excludeComposed) {
-                        if (eventTitle === normalizedSource) return true;
-                    } else if (splitEventSummary(eventTitle).some((part) => part === normalizedSource)) {
-                        return true;
-                    }
-                }
-
-                return false;
-            }
-
             return excludeComposed ? eventTitle === compareTitle : splitEventSummary(eventTitle).some((part) => part === compareTitle);
         }
 
@@ -877,7 +643,7 @@ function createOverviewChart(events) {
     const limits = categories.map((category) => Object.keys(eventGroups[category]).length);
     const palette = categories.map((category) => adjustHexLightness(category, hexLightness));
 
-    function getSeriesColor(seriesIndex) {
+    function resolveCategoryColor(seriesIndex) {
         let index = seriesIndex;
         for (let i = 0; i < limits.length; i++) {
             if (index < limits[i]) return palette[i];
@@ -895,8 +661,8 @@ function createOverviewChart(events) {
                 ? seriesData.map((series, index) => ({
                       label: series.name,
                       data: series.data,
-                      backgroundColor: getSeriesColor(index),
-                      hoverBackgroundColor: getSeriesColor(index),
+                      backgroundColor: resolveCategoryColor(index),
+                      hoverBackgroundColor: resolveCategoryColor(index),
                       borderWidth: 0,
                       borderRadius: 10,
                       borderSkipped: false
@@ -1319,7 +1085,6 @@ function initializeTitleDropdown() {
         searchInput.value = "";
         selectedDot.classList.add("hidden");
         menu.classList.add("hidden");
-        isFilter = false;
         updateChart();
         updateDropdown();
     }
@@ -1333,36 +1098,11 @@ function initializeTitleDropdown() {
         clearOption.addEventListener("click", clearSelection);
         optionsContainer.appendChild(clearOption);
 
-        const customCategories = new Map();
-
-        document.querySelectorAll(".modification").forEach((mod) => {
-            const sourceTitle = mod.querySelector(".mod-filter-label")?.textContent || "";
-            const replaceValue = mod.querySelector(".mod-replace-input")?.value;
-            if (sourceTitle && sourceTitle !== "Select a filter..." && replaceValue) {
-                if (!customCategories.has(replaceValue)) customCategories.set(replaceValue, new Set());
-                customCategories.get(replaceValue).add(sourceTitle);
-            }
-        });
-
         Object.keys(words)
             .filter((key) => !isHiddenActivityTitle(key) && key.toLowerCase().includes(searchTerm.toLowerCase()) && words[key][0][2] !== colors.default)
-            .forEach((key) => addOptionToDropdown(key, getMostCommonColor(key), false));
+            .forEach((key) => addOptionToDropdown(key, getMostCommonColor(key)));
 
-        customCategories.forEach((sources, category) => {
-            if (isHiddenActivityTitle(category)) return;
-            if (!category.toLowerCase().includes(searchTerm.toLowerCase())) return;
-
-            const colorCounts = {};
-            Array.from(sources).forEach((realCategory) => {
-                const [color, n] = getMostCommonColor(realCategory, true);
-                colorCounts[color] = (colorCounts[color] || 0) + n;
-            });
-
-            const mostCommon = Object.keys(colorCounts).reduce((a, b) => (colorCounts[a] > colorCounts[b] ? a : b));
-            addOptionToDropdown(category, mostCommon, true);
-        });
-
-        function addOptionToDropdown(text, color, filter) {
+        function addOptionToDropdown(text, color) {
             if (optionsContainer.querySelector(`[data-value="${escapeAttributeValue(text)}"]`)) return;
 
             const option = document.createElement("div");
@@ -1371,7 +1111,7 @@ function initializeTitleDropdown() {
 
             const dot = document.createElement("span");
             dot.className = "select-dot";
-            dot.style.backgroundColor = filter ? "transparent" : color;
+            dot.style.backgroundColor = color;
             dot.style.borderColor = color;
             option.appendChild(dot);
 
@@ -1381,11 +1121,10 @@ function initializeTitleDropdown() {
 
             option.addEventListener("click", () => {
                 selectedTitle.textContent = text;
-                selectedDot.style.backgroundColor = filter ? "transparent" : color;
+                selectedDot.style.backgroundColor = color;
                 selectedDot.style.borderColor = color;
                 selectedDot.classList.remove("hidden");
                 menu.classList.add("hidden");
-                isFilter = filter;
                 updateChart();
             });
 
@@ -1409,15 +1148,6 @@ function initializeTitleDropdown() {
 
     menu.addEventListener("click", (e) => {
         e.stopPropagation();
-    });
-
-    document.addEventListener("updatedropdown", updateDropdown);
-
-    document.addEventListener("validatetitle", () => {
-        const currentTitle = selectedTitle.textContent;
-        const value = currentTitle === "Select title..." ? "" : currentTitle;
-        if (isFilter && !Array.from(document.querySelectorAll(".mod-replace-input")).some((input) => input.value.trim() === value.trim())) clearSelection();
-        else updateDropdown();
     });
 
     updateOptions();
@@ -1476,10 +1206,6 @@ function initializeAnalyticsScopeDropdown() {
 
     menu.addEventListener("click", (e) => {
         e.stopPropagation();
-    });
-
-    document.addEventListener("validatetitle", () => {
-        updateOptions(searchInput.value);
     });
 
     updateOptions();
