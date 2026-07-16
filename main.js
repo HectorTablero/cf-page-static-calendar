@@ -17,6 +17,18 @@ let analyticsScopeSelection = {
     label: "All activities"
 };
 const analyticsPalette = ["#2563eb", "#14b8a6", "#f97316", "#8b5cf6", "#ef4444", "#22c55e", "#0ea5e9", "#f59e0b"];
+const categoryNames = {
+    "#b0c4de": "Neutral",
+    "#aee4c4": "Somewhat Productive",
+    "#d0b1da": "Social",
+    "#f7c2a4": "Somewhat Unproductive",
+    "#f9dd9b": "Mix",
+    "#b0b0b0": "Rest",
+    "#98a8cf": "Social/Productive",
+    "#9fbeaa": "Productive",
+    "#e5a4a5": "Unproductive",
+    "#e0e0e0": "Not Specified"
+};
 const colors = {
     1: "#b0c4de", // neutral
     2: "#aee4c4", // mid-prod
@@ -846,19 +858,6 @@ function createOverviewChart(events) {
         return bTotal - aTotal;
     });
 
-    const categoryNames = {
-        "#b0c4de": "Neutral",
-        "#aee4c4": "Somewhat Productive",
-        "#d0b1da": "Social",
-        "#f7c2a4": "Somewhat Unproductive",
-        "#f9dd9b": "Mix",
-        "#b0b0b0": "Rest",
-        "#98a8cf": "Social/Productive",
-        "#9fbeaa": "Productive",
-        "#e5a4a5": "Unproductive",
-        "#e0e0e0": "Not Specified"
-    };
-
     const labels = categories.map((category) => categoryNames[category] || category);
     const seriesData = [];
 
@@ -982,6 +981,32 @@ function createOverviewChart(events) {
     }
 }
 
+function computeCategoryMonthlySeries(events, monthKeys, monthIndex) {
+    const totalsByCategory = new Map();
+
+    events.forEach((event) => {
+        const eventDate = new Date(event.start.dateTime);
+        const monthKey = getMonthKeyFromDate(eventDate);
+        const index = monthIndex.get(monthKey);
+        if (index === undefined) return;
+
+        if (!totalsByCategory.has(event.color)) totalsByCategory.set(event.color, Array(monthKeys.length).fill(0));
+        totalsByCategory.get(event.color)[index] += getEventDurationHours(event);
+    });
+
+    return Array.from(totalsByCategory.entries())
+        .sort((a, b) => {
+            const totalA = a[1].reduce((sum, value) => sum + value, 0);
+            const totalB = b[1].reduce((sum, value) => sum + value, 0);
+            return totalB - totalA;
+        })
+        .map(([color, data]) => ({
+            label: categoryNames[color] || "Other",
+            data: data.map((value) => Math.round(value * 100) / 100),
+            color: adjustHexLightness(color, hexLightness)
+        }));
+}
+
 function collectScopeAnalytics(events, selection = analyticsScopeSelection) {
     const monthKeys = getMonthKeys(events);
     const labels = monthKeys.map(getMonthLabelFromKey);
@@ -996,6 +1021,7 @@ function collectScopeAnalytics(events, selection = analyticsScopeSelection) {
     let totalHours = 0;
     let sharedHours = 0;
     let blockCount = 0;
+    const uniqueDayKeys = new Set();
 
     events.forEach((event) => {
         const eventDate = new Date(event.start.dateTime);
@@ -1007,6 +1033,7 @@ function collectScopeAnalytics(events, selection = analyticsScopeSelection) {
 
         const duration = getEventDurationHours(event);
         allMonthlyTotals[index] += duration;
+        uniqueDayKeys.add(`${eventDate.getFullYear()}-${eventDate.getMonth()}-${eventDate.getDate()}`);
 
         if (selection.kind === "all") return;
 
@@ -1031,7 +1058,9 @@ function collectScopeAnalytics(events, selection = analyticsScopeSelection) {
     const peakHours = relevantMonthTotals[peakIndex] || 0;
     const peakMonthLabel = monthKeys.length ? getMonthLabelFromKey(monthKeys[peakIndex]) : "—";
     const hasData = selection.kind === "all" ? events.length > 0 : blockCount > 0;
-    const message = selection.kind === "all" ? (events.length ? "Select an activity or group to see the monthly graph." : "No events match the current filters.") : blockCount ? "" : `No events found for ${selection.label} in the current filters.`;
+    const message = selection.kind === "all" ? "No events match the current filters." : blockCount ? "" : `No events found for ${selection.label} in the current filters.`;
+    const categorySeries = selection.kind === "all" ? computeCategoryMonthlySeries(events, monthKeys, monthIndex) : [];
+    const monthsWithData = allMonthlyTotals.filter((value) => value > 0).length;
 
     const series = [];
     if (selection.kind !== "all" && blockCount > 0) {
@@ -1079,6 +1108,9 @@ function collectScopeAnalytics(events, selection = analyticsScopeSelection) {
         peakMonthLabel,
         peakHours,
         series,
+        categorySeries,
+        totalDaysLogged: uniqueDayKeys.size,
+        monthsWithData,
         hasData,
         message
     };
@@ -1088,8 +1120,10 @@ function createTimelineChart(events) {
     const scopeData = collectScopeAnalytics(events);
     const canvas = document.getElementById("timelineChart");
     const emptyState = document.getElementById("timelineEmptyState");
+    const isAllScope = scopeData.selection.kind === "all";
+    const activeSeries = isAllScope ? scopeData.categorySeries : scopeData.series;
 
-    if (scopeData.selection.kind === "all" || !scopeData.series.length) {
+    if (!activeSeries.length) {
         if (timelineChart) {
             timelineChart.destroy();
             timelineChart = null;
@@ -1108,8 +1142,8 @@ function createTimelineChart(events) {
         type: "line",
         data: {
             labels: scopeData.labels.length ? scopeData.labels : ["No data"],
-            datasets: scopeData.series.length
-                ? scopeData.series.map((series) => ({
+            datasets: activeSeries.length
+                ? activeSeries.map((series) => ({
                       label: series.label,
                       data: series.data,
                       backgroundColor: "rgba(15, 23, 42, 0)",
@@ -1196,7 +1230,7 @@ function createTimelineChart(events) {
                     }
                 },
                 legend: {
-                    display: scopeData.series.length > 1,
+                    display: activeSeries.length > 1,
                     position: "bottom",
                     labels: {
                         usePointStyle: true,
@@ -1230,8 +1264,23 @@ function updateAnalyticsMetrics(events, scopeData) {
     document.getElementById("metricTotalLabel").textContent = subtitle;
     document.getElementById("metricActivityCount").textContent = scopeData.blockCount.toString();
     document.getElementById("metricActivityLabel").textContent = label;
-    document.getElementById("metricPeakMonth").textContent = scopeData.peakMonthLabel;
-    document.getElementById("metricPeakLabel").textContent = scopeData.selection.kind === "all" ? `${formatDurationHours(scopeData.peakHours)} in the busiest month` : `${formatDurationHours(scopeData.peakHours)} in that month`;
+
+    const peakIcon = document.getElementById("metricPeakIcon");
+    const peakTitle = document.getElementById("metricPeakTitle");
+    const peakValue = document.getElementById("metricPeakMonth");
+    const peakLabel = document.getElementById("metricPeakLabel");
+
+    if (scopeData.selection.kind === "all") {
+        peakIcon.textContent = "event_available";
+        peakTitle.textContent = "Days logged";
+        peakValue.textContent = scopeData.totalDaysLogged.toString();
+        peakLabel.textContent = `Across ${scopeData.monthsWithData} month${scopeData.monthsWithData === 1 ? "" : "s"}`;
+    } else {
+        peakIcon.textContent = "trending_up";
+        peakTitle.textContent = "Peak month";
+        peakValue.textContent = scopeData.peakMonthLabel;
+        peakLabel.textContent = `${formatDurationHours(scopeData.peakHours)} in that month`;
+    }
 }
 
 function updateChart() {

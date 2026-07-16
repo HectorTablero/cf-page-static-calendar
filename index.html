@@ -8,12 +8,73 @@
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Material+Symbols+Outlined:wght@300..700&display=swap" rel="stylesheet" />
-        <title>Calendario</title>
+        <title>Calendar</title>
         <link rel="icon" type="image/svg+xml" href="icons/favicon.svg" />
         <link rel="stylesheet" href="styles.css" />
     </head>
     <body>
         <div class="page-shell">
+            <header class="site-header">
+                <div class="site-header__row">
+                    <svg class="site-logo" viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <style>
+                            .site-logo .animated-d-path {
+                                fill: none;
+                                stroke: currentColor;
+                                stroke-width: 50;
+                                stroke-linecap: round;
+                                stroke-linejoin: round;
+                                transition: d 0.6s cubic-bezier(0.25, 1, 0.5, 1);
+                            }
+                            .site-logo .vertical-bar {
+                                d: path("M175 165 L125 165 L125 200 L125 235 L125 270 L125 305 L125 340 L125 375 L125 390 L250 390 L375 390 L375 165 L325 165");
+                            }
+                            .site-logo .chevron {
+                                d: path("M175 95 L175 165 L250 165 L325 165 L325 95");
+                            }
+                            .site-logo .horiz-line {
+                                d: path("M125 240 L155 240 L185 240 L215 240 L245 240 L275 240 L305 240 L335 240 L365 240 L375 240");
+                            }
+                            .site-logo:hover .vertical-bar {
+                                d: path("M450 110 L450 100 L450 133 L450 166 L450 200 L450 233 L450 266 L450 300 L450 333 L450 366 L450 400 L450 380 L450 390");
+                            }
+                            .site-logo:hover .chevron {
+                                d: path("M300 125 L325 166.66667 L375 250 L325 333.33334 L300 375");
+                            }
+                            .site-logo:hover .horiz-line {
+                                d: path("M50 250 L85 250 L120 250 L155 250 L190 250 L235 250 L280 250 L315 250 L345 250 L375 250");
+                            }
+                        </style>
+                        <path class="animated-d-path horiz-line" />
+                        <path class="animated-d-path chevron" />
+                        <path class="animated-d-path vertical-bar" />
+                    </svg>
+                    <h1 class="site-name">Héctor Tablero</h1>
+                </div>
+
+                <details class="about-toggle">
+                    <summary class="about-toggle__summary">
+                        <span class="material-symbols-outlined about-toggle__chevron" aria-hidden="true">expand_more</span>
+                        <span>Why this project exists</span>
+                    </summary>
+                    <div class="about-toggle__body">
+                        <p>As someone deeply engaged in self-development, knowing where my time goes is crucial for tracking my growth and revealing hidden habits. What motivated this calendar originally was trying to recall what I did in a day and realising it doesn't add up to 24 hours, but rather to 20–22. I'm not particularly worried about having "unproductive" hours, but having "lost" time does matter.</p>
+                        <p>Since the day I started this calendar, I have kept track of all my activities in intervals of 15 minutes. The act of tracking itself probably helped me become more productive, through the gained awareness, as can be seen by comparing the first (mostly orange-red) month with any of the latest months. Wanting to take it one step further, I made the calendar public to give myself the extra pressure that comes with knowing that professors, recruiters, or other third parties might find this page, even if I rarely share the link myself.</p>
+                        <p><strong>About the Data:</strong></p>
+                        <ul>
+                            <li>Blocks shorter than 15 minutes will not be logged. This includes short daily workouts, short language-learning sessions (current streak of <span id="duolingo-days"></span> days on Duolingo) or other tasks.</li>
+                            <li>Some sensitive or private information, such as showering, is either not logged or reframed.</li>
+                            <li>While I try to update the data in the moment, there are times when it is not possible, causing blocks to be overshadowed. The most common example of this is with Dinner/Lunch blocks, which I am sometimes unable to trace back when they overlapped with an activity I was doing both before and after (Work, Research, etc.)</li>
+                        </ul>
+                    </div>
+                    <script>
+                        // Calculate date - 16 july 2026 + 935 (current streak as of that date)
+                        const duolingoDays = Math.floor((new Date() - new Date("2026-07-16")) / (1000 * 60 * 60 * 24)) + 935;
+                        document.getElementById("duolingo-days").textContent = duolingoDays;
+                    </script>
+                </details>
+            </header>
+
             <section class="surface-card calendar-card" id="calendarSection">
                 <div class="section-kicker section-kicker--top">
                     <span class="material-symbols-outlined" aria-hidden="true">calendar_view_month</span>
@@ -118,8 +179,8 @@
 
                     <article class="metric-card">
                         <span class="metric-label">
-                            <span class="material-symbols-outlined" aria-hidden="true">trending_up</span>
-                            <span>Peak month</span>
+                            <span id="metricPeakIcon" class="material-symbols-outlined" aria-hidden="true">trending_up</span>
+                            <span id="metricPeakTitle">Peak month</span>
                         </span>
                         <strong id="metricPeakMonth">—</strong>
                         <span id="metricPeakLabel">No data</span>
