@@ -235,10 +235,101 @@
                     </article>
                 </div>
             </section>
+
+            <section class="surface-card insights-card hidden" id="insightsSection">
+                <span class="section-kicker section-kicker--top">
+                    <span class="material-symbols-outlined" aria-hidden="true">terminal</span>
+                    <span>Custom Insights</span>
+                </span>
+                <p class="insights-intro">A programmable console over the raw log. Write JavaScript against <code>data</code> (a queryable wrapper around every event), render results with <code>out</code> (which prints page elements, not raw dumps), and lean on <code>stats</code> for medians, correlations, and formatting. Pick a recipe to see it in action, then edit, save, and re-run.</p>
+
+                <div class="insights-gallery">
+                    <div id="insightsGallery" class="insights-gallery__grid"></div>
+                    <button type="button" id="insightsGalleryToggle" class="insights-gallery__toggle hidden"></button>
+                </div>
+
+                <div class="insights-layout">
+                    <div class="insights-editor-pane">
+                        <div class="insights-toolbar">
+                            <p class="insights-toolbar__hint">
+                                Click a highlighted <span class="insights-chip-demo"><span class="insights-dot"></span>name</span> in the code to swap that activity or category.
+                            </p>
+                            <div class="insights-toolbar__actions">
+                                <button type="button" id="insightsSave" class="insights-button insights-button--ghost">
+                                    <span class="material-symbols-outlined" aria-hidden="true">bookmark_add</span>
+                                    <span>Save</span>
+                                </button>
+                                <button type="button" id="insightsReset" class="insights-button insights-button--ghost">
+                                    <span class="material-symbols-outlined" aria-hidden="true">restart_alt</span>
+                                    <span>Reset</span>
+                                </button>
+                                <button type="button" id="insightsRun" class="insights-button insights-button--primary">
+                                    <span class="material-symbols-outlined" aria-hidden="true">play_arrow</span>
+                                    <span>Run</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="insightsSaveRow" class="insights-save-row hidden">
+                            <input type="text" id="insightsSaveName" class="insights-save-row__input" placeholder="Name this query…" autocomplete="off" />
+                            <button type="button" id="insightsSaveConfirm" class="insights-button insights-button--primary insights-button--sm">Save</button>
+                            <button type="button" id="insightsSaveCancel" class="insights-button insights-button--ghost insights-button--sm">Cancel</button>
+                        </div>
+
+                        <div id="insightsCode" class="insights-code" contenteditable="true" spellcheck="false" autocapitalize="off" aria-label="Insights code editor"></div>
+                        <p class="insights-hint">In scope: <code>data</code>, <code>out</code>, <code>stats</code>. Press <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Enter</kbd> to run. Start from the <em>Activity vocabulary</em> recipe to discover the exact names used below.</p>
+                    </div>
+
+                    <div class="insights-output-pane">
+                        <div id="insightsOutput" class="insights-output"></div>
+                    </div>
+                </div>
+
+                <details class="insights-guide">
+                    <summary>
+                        <span class="material-symbols-outlined about-toggle__chevron" aria-hidden="true">expand_more</span>
+                        <span>Interface reference</span>
+                    </summary>
+                    <div class="insights-guide__body">
+                        <div class="insights-guide__group">
+                            <h4>data — CalendarDataset</h4>
+                            <ul>
+                                <li><code>data.blocks</code> / <code>data.events</code> — day-split segments vs. events re-merged across midnight.</li>
+                                <li><code>data.days</code>, <code>data.calendarDays()</code>, <code>data.range</code> — per-day view and the logged date span (gaps included).</li>
+                                <li><code>data.activities()</code> — every activity name with hours, block/event counts, first &amp; last seen.</li>
+                                <li><code>data.withActivity(name)</code>, <code>data.blocksOf(name)</code>, <code>data.hoursOf(name)</code>, <code>data.colorOf(name)</code>.</li>
+                                <li><code>data.has(item, name)</code>, <code>data.hasAny(item, names)</code> — membership tests for a block/event.</li>
+                                <li><code>data.precededBy(name)</code> / <code>data.followedBy(name)</code> — timeline neighbours, for "what comes before X" correlations.</li>
+                            </ul>
+                        </div>
+                        <div class="insights-guide__group">
+                            <h4>out — Report (renders elements)</h4>
+                            <ul>
+                                <li><code>out.heading()</code>, <code>out.subheading()</code>, <code>out.p()</code>, <code>out.note()</code>, <code>out.callout(text, kind)</code>, <code>out.divider()</code>.</li>
+                                <li><code>out.stat(value, label, sub)</code>, <code>out.stats([…])</code>, <code>out.keyValues([[k, v]])</code>.</li>
+                                <li><code>out.list(items)</code>, <code>out.table({ columns, rows })</code>, <code>out.bars({ items })</code>.</li>
+                                <li><code>out.raw(value)</code> — escape hatch to pretty-print JSON. Returning a value auto-renders it.</li>
+                            </ul>
+                        </div>
+                        <div class="insights-guide__group">
+                            <h4>stats — helpers</h4>
+                            <ul>
+                                <li><code>sum, mean, median, quantile, std, min, max, round</code>.</li>
+                                <li><code>groupBy, countBy, pearson</code> — aggregation &amp; correlation.</li>
+                                <li><code>formatHours, formatDate, formatDateTime, formatClock</code>; constants <code>MONTHS(_SHORT)</code>, <code>WEEKDAYS(_SHORT)</code>.</li>
+                            </ul>
+                        </div>
+                        <p class="insights-guide__foot">Snippets run in your browser only — nothing is uploaded, and saved queries live in this browser's local storage. They read a copy of the loaded data, so you can't corrupt the calendar.</p>
+                    </div>
+                </details>
+            </section>
         </div>
 
         <div id="calendarTooltip" class="calendar-tooltip hidden" aria-hidden="true"></div>
 
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+        <script src="calendar-processor.js"></script>
+        <script src="insights.js"></script>
         <script src="main.js"></script>
     </body>
 </html>

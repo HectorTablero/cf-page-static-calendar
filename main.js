@@ -132,41 +132,80 @@ function scrollCalendarToEnd() {
     });
 }
 
+const CALENDAR_DATA_URL = "https://workers.tablerus.es/calendar/everything";
+
+function applyCalendarData(data) {
+    originalEvents = data.events || [];
+    invalidMonthKeys = data.invalidMonthKeys || [];
+    eventsByDay = data.eventsByDay || {};
+    words = data.words || {};
+}
+
 async function fetchData() {
     setCalendarLoadingState(true);
 
-    return new Promise((resolve) => {
-        // Cache bust the worker to ensure we get the latest version with grouping support
-        const worker = new Worker("calendar-worker.js?v=" + new Date().getTime());
+    try {
+        const data = await loadCalendarData();
+        applyCalendarData(data);
+        return true;
+    } catch (error) {
+        console.error("Calendar load error:", error);
+        setCalendarLoadingState(true, "Unable to load calendar data.");
+        return false;
+    }
+}
+
+// Prefer a Web Worker so the (fairly heavy) parsing happens off the main thread.
+// When the Worker constructor is unavailable — most commonly when the page is
+// opened from a file:// URL, which browsers treat as a unique/null origin and
+// refuse to spawn workers for — fall back to running the exact same processing
+// (shared via calendar-processor.js) on the main thread.
+function loadCalendarData() {
+    return runInWorker().catch((error) => {
+        console.warn("Falling back to main-thread calendar processing:", error.message);
+        return runOnMainThread();
+    });
+}
+
+function runInWorker() {
+    return new Promise((resolve, reject) => {
+        let worker;
+        try {
+            // Cache bust the worker to ensure we get the latest version with grouping support
+            worker = new Worker("calendar-worker.js?v=" + new Date().getTime());
+        } catch (error) {
+            reject(error);
+            return;
+        }
 
         worker.onmessage = function (e) {
             if (e.data.success) {
-                originalEvents = e.data.events || [];
-                invalidMonthKeys = e.data.invalidMonthKeys || [];
-                eventsByDay = e.data.eventsByDay || {};
-                words = e.data.words || {};
-                worker.terminate();
-                resolve(true);
+                resolve(e.data);
             } else {
-                console.error("Worker error:", e.data.error);
-                setCalendarLoadingState(true, "Unable to load calendar data.");
-                worker.terminate();
-                resolve(false);
+                reject(new Error(e.data.error || "Worker reported failure"));
             }
+            worker.terminate();
         };
 
         worker.onerror = function (error) {
-            console.error("Worker generic error:", error);
-            setCalendarLoadingState(true, "Unable to load calendar data.");
+            reject(new Error(error.message || "Worker error"));
             worker.terminate();
-            resolve(false);
         };
 
         worker.postMessage({
-            url: "https://workers.tablerus.es/calendar/everything",
+            url: CALENDAR_DATA_URL,
             colors: colors
         });
     });
+}
+
+async function runOnMainThread() {
+    if (typeof fetchCalendarData !== "function" || typeof buildCalendarData !== "function") {
+        throw new Error("calendar-processor.js is not loaded");
+    }
+
+    const rawEvents = await fetchCalendarData(CALENDAR_DATA_URL);
+    return buildCalendarData(rawEvents, colors);
 }
 
 function renderDay(dateD) {
@@ -761,6 +800,7 @@ function computeCategoryMonthlySeries(events, monthKeys, monthIndex) {
     });
 
     return Array.from(totalsByCategory.entries())
+        .filter(([color]) => color !== colors.default && categoryNames[color] !== "Not Specified")
         .sort((a, b) => {
             const totalA = a[1].reduce((sum, value) => sum + value, 0);
             const totalB = b[1].reduce((sum, value) => sum + value, 0);
@@ -1215,4 +1255,14 @@ fetchData().then(() => {
     if (!originalEvents.length) return;
 
     renderCalendar(originalEvents);
+
+    if (window.CalendarInsights) {
+        window.CalendarInsights.init({
+            events: originalEvents,
+            words,
+            colors,
+            categoryNames,
+            invalidMonthKeys
+        });
+    }
 });
