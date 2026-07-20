@@ -45,6 +45,28 @@
     }
 
     // ---------------------------------------------------------------------
+    // Activity notes
+    // ---------------------------------------------------------------------
+    // Context about how certain labels are logged. Only notes whose activity
+    // actually appears in a result are attached when exporting to Markdown, so
+    // the reader gets the caveats that are relevant to what they're looking at.
+    const ACTIVITY_NOTES = {
+        Friend: '"Friend" (singular) does not always refer to the same person — it is distinguished from "Friends" mainly by the number of people involved. Social labels like this can completely swallow whatever else was happening (Exercise, Walk, meals...); they only show up in a combination such as "Work + Friend" when that other activity was the main focus.',
+        Friends: '"Friends" (plural) covers time spent with a group rather than one person. Social labels like this can completely swallow whatever else was happening (Exercise, Walk, meals...); they only show up in a combination such as "Work + Friends" when that other activity was the main focus.',
+        Family: '"Family" is a social label that can completely swallow whatever else was happening (Exercise, Walk, meals...). It only shows up in a combination such as "Work + Family" when that other activity was the main focus.',
+        Exercise: '"Exercise" is a broad label for any kind of physical activity (snowboarding, diving...). This label only appears when exercising alone for a period well over 15 minutes, so it is mainly reserved for sports trips. I tend to do shorter daily calisthenics workouts daily.',
+        Work: '"Work" is not limited to employment. It can also represent volunteering or other tasks that are not Project. Admittedly, sometimes I log "Work" when I meant "Project", though the dataset is generally precise enough and the difference between the two labels isn\'t that significant.',
+        Rest: '"Rest" represents completely idle time when awake.',
+        "?": '"?" represents time I forgot to log in the moment and couldn\'t reconstruct afterwards through browser history, photo timestamps, etc. This is mainly concentrated during trips or situations where I am too immersed to log.',
+        Class: '"Class" represents only time spent in a lecture or class practice in person. It does not include Homework.',
+        Languages: '"Languages" represents time spent learning a language, usually through Duolingo (Italian), WaniKani (Japanese) or books. My sessions tend to last less than 15 minutes (not logged), hence why the hour totals are low, but I practice daily without exception.',
+        Cooking: 'I tend to multitask heavily when "Cooking", so this label only appears when I am fully focused on Cooking, and usually for long sessions (elaborate dishes).',
+        Series: '"Series" only represents Western media, and is separate from the activity Anime.',
+        Event: '"Event" mainly represents in-person workshops or expert discussions, and is logged both when I am an attendee and when I am the one presenting the Event.',
+        Writing: '"Writing" is limited to creative writing, and does not include Work, Project or Research related writing.'
+    };
+
+    // ---------------------------------------------------------------------
     // stats – statistics & formatting helpers
     // ---------------------------------------------------------------------
 
@@ -109,8 +131,9 @@
             const denom = Math.sqrt(dx * dy);
             return denom === 0 ? 0 : num / denom;
         },
-        // Group an array into a Map keyed by keyFn(item).
-        groupBy(items, keyFn) {
+        // Group an array into a Map keyed by keyFn(item). keyFn defaults to
+        // identity, so groupBy(names) buckets equal values together.
+        groupBy(items, keyFn = (item) => item) {
             const map = new Map();
             items.forEach((item, index) => {
                 const key = keyFn(item, index);
@@ -120,7 +143,8 @@
             return map;
         },
         // Count occurrences by key, returned as a sorted [key, count][] array.
-        countBy(items, keyFn) {
+        // keyFn defaults to identity, so countBy(["a", "a", "b"]) → [["a", 2], ["b", 1]].
+        countBy(items, keyFn = (item) => item) {
             const map = new Map();
             items.forEach((item, index) => {
                 const key = keyFn(item, index);
@@ -145,6 +169,15 @@
         formatDateTime(date) {
             const d = date instanceof Date ? date : new Date(date);
             return `${stats.formatDate(d)}, ${stats.formatClock(d.getHours() * 60 + d.getMinutes())}`;
+        },
+        // Minutes-from-UTC → "GMT+9" / "GMT+5:30" / "GMT−4".
+        formatOffset(offsetMinutes) {
+            if (!Number.isFinite(offsetMinutes)) return "GMT";
+            const sign = offsetMinutes < 0 ? "−" : "+";
+            const abs = Math.abs(offsetMinutes);
+            const hours = Math.floor(abs / 60);
+            const mins = abs % 60;
+            return `GMT${sign}${hours}${mins ? ":" + String(mins).padStart(2, "0") : ""}`;
         },
         // Accepts either a Date or minutes-from-midnight and returns "HH:MM".
         formatClock(value) {
@@ -206,6 +239,10 @@
                 month: start.getMonth(),
                 year: start.getFullYear(),
                 startMinutes: start.getHours() * 60 + start.getMinutes(),
+                // Only the (accurate) UTC offset is exposed — the underlying IANA
+                // location is unreliable, so it is deliberately not surfaced here.
+                offsetMinutes: raw.offsetMinutes,
+                offsetFromHome: raw.offsetFromHome || 0,
                 isContinuation: !!raw.continuation,
                 raw
             };
@@ -232,6 +269,8 @@
                     month: realStart.getMonth(),
                     year: realStart.getFullYear(),
                     startMinutes: realStart.getHours() * 60 + realStart.getMinutes(),
+                    offsetMinutes: raw.offsetMinutes,
+                    offsetFromHome: raw.offsetFromHome || 0,
                     spanDays: Math.max(1, Math.ceil((realEnd - realStart) / DAY_MS))
                 });
             });
@@ -389,9 +428,16 @@
         constructor(container, options = {}) {
             this.container = container;
             this._count = 0;
+            // A parallel, structured record of everything rendered, used to
+            // serialise the results to Markdown (see toMarkdown).
+            this.log = [];
             // Optional (name) => colour|null lookup. When a rendered cell/list text
             // is a known activity name, it gets a leading dot in that colour.
             this.entryColor = options.entryColor || (() => null);
+        }
+
+        _record(entry) {
+            this.log.push(entry);
         }
 
         // Build a text node or, for a recognised activity name, a dot + name span.
@@ -409,6 +455,7 @@
         clear() {
             this.container.replaceChildren();
             this._count = 0;
+            this.log = [];
             return this;
         }
         hasContent() {
@@ -421,22 +468,28 @@
         }
 
         heading(text) {
+            this._record({ t: "heading", text: String(text) });
             return this._add(el("h3", "insights-block__heading", text));
         }
         subheading(text) {
+            this._record({ t: "subheading", text: String(text) });
             return this._add(el("h4", "insights-block__subheading", text));
         }
         p(text) {
+            this._record({ t: "p", text: String(text) });
             return this._add(el("p", "insights-block__text", text));
         }
         note(text) {
+            this._record({ t: "note", text: String(text) });
             return this._add(el("p", "insights-block__note", text));
         }
         callout(text, kind = "info") {
+            this._record({ t: "callout", text: String(text), kind });
             const node = el("div", `insights-callout insights-callout--${kind}`, text);
             return this._add(node);
         }
         divider() {
+            this._record({ t: "divider" });
             return this._add(el("hr", "insights-block__divider"));
         }
 
@@ -446,6 +499,7 @@
         }
         // A responsive grid of statistics: [{ value, label, sub }].
         stats(items) {
+            this._record({ t: "stats", items: items.map((item) => ({ value: item.value, label: item.label, sub: item.sub })) });
             const grid = el("div", "insights-stats");
             items.forEach((item) => {
                 const card = el("div", "insights-stat");
@@ -459,6 +513,7 @@
 
         // A definition list from [[key, value], …] pairs.
         keyValues(pairs) {
+            this._record({ t: "keyValues", pairs: pairs.map(([key, value]) => [key, value]) });
             const list = el("dl", "insights-kv");
             pairs.forEach(([key, value]) => {
                 list.appendChild(el("dt", "insights-kv__key", key));
@@ -469,6 +524,10 @@
 
         // A bulleted list. Items are strings or { text, meta }.
         list(items) {
+            this._record({
+                t: "list",
+                items: items.map((item) => (item && typeof item === "object" ? { text: item.text, meta: item.meta } : { text: item }))
+            });
             const ul = el("ul", "insights-list");
             items.forEach((item) => {
                 const li = el("li", "insights-list__item");
@@ -487,6 +546,7 @@
 
         // A table. columns: string[]; rows: (string|number)[][].
         table({ columns = [], rows = [] }) {
+            this._record({ t: "table", columns: columns.slice(), rows: rows.map((row) => row.slice()) });
             const wrap = el("div", "insights-table-wrap");
             const table = el("table", "insights-table");
             const thead = el("thead");
@@ -513,6 +573,10 @@
         bars({ items = [], max, format }) {
             const formatter = format || ((value) => stats.round(value, 1));
             const ceiling = max !== undefined ? max : stats.max(items.map((item) => item.value)) || 1;
+            this._record({
+                t: "bars",
+                items: items.map((item) => ({ label: item.label, value: item.value, display: item.sub !== undefined ? item.sub : formatter(item.value) }))
+            });
             const chart = el("div", "insights-bars");
             items.forEach((item) => {
                 const row = el("div", "insights-bars__row");
@@ -531,6 +595,13 @@
 
         // Escape hatch: pretty-print any value as JSON.
         raw(value) {
+            let json;
+            try {
+                json = JSON.stringify(value, (key, val) => (val instanceof Date ? val.toISOString() : val), 2);
+            } catch (error) {
+                json = String(value);
+            }
+            this._record({ t: "raw", text: json });
             const pre = el("pre", "insights-raw");
             try {
                 pre.textContent = JSON.stringify(value, (key, val) => (val instanceof Date ? val.toISOString() : val), 2);
@@ -555,11 +626,122 @@
         }
 
         error(err) {
+            this._record({ t: "error", title: err.name === "SyntaxError" ? "Syntax error" : "Error", text: err.message });
             const box = el("div", "insights-callout insights-callout--error");
             box.appendChild(el("strong", null, err.name === "SyntaxError" ? "Syntax error" : "Error"));
             box.appendChild(el("span", "insights-error__message", err.message));
             return this._add(box);
         }
+
+        // Serialise the recorded results to Markdown. Options:
+        //   code  – the snippet source to embed in a fenced block (or null).
+        //   notes – when true, append context for any noted activity that shows up.
+        toMarkdown({ code = null, notes = true } = {}) {
+            const lines = [];
+            const cell = (value) => mdText(value);
+
+            this.log.forEach((entry) => {
+                switch (entry.t) {
+                    case "heading":
+                        lines.push(`## ${cell(entry.text)}`, "");
+                        break;
+                    case "subheading":
+                        lines.push(`### ${cell(entry.text)}`, "");
+                        break;
+                    case "p":
+                        lines.push(cell(entry.text), "");
+                        break;
+                    case "note":
+                        lines.push(`_${cell(entry.text)}_`, "");
+                        break;
+                    case "callout":
+                        lines.push(`> ${cell(entry.text)}`, "");
+                        break;
+                    case "error":
+                        lines.push(`> **${cell(entry.title)}:** ${cell(entry.text)}`, "");
+                        break;
+                    case "divider":
+                        lines.push("---", "");
+                        break;
+                    case "stats":
+                        entry.items.forEach((item) => {
+                            const bits = [`**${cell(item.value)}**`];
+                            if (item.label) bits.push(`— ${cell(item.label)}`);
+                            if (item.sub) bits.push(`(${cell(item.sub)})`);
+                            lines.push(`- ${bits.join(" ")}`);
+                        });
+                        lines.push("");
+                        break;
+                    case "keyValues":
+                        entry.pairs.forEach(([key, value]) => lines.push(`- **${cell(key)}:** ${cell(value)}`));
+                        lines.push("");
+                        break;
+                    case "list":
+                        entry.items.forEach((item) => {
+                            const meta = item.meta !== undefined && item.meta !== null && item.meta !== "" ? `  — ${cell(item.meta)}` : "";
+                            lines.push(`- ${cell(item.text)}${meta}`);
+                        });
+                        lines.push("");
+                        break;
+                    case "bars":
+                        entry.items.forEach((item) => lines.push(`- ${cell(item.label)}: ${cell(item.display)}`));
+                        lines.push("");
+                        break;
+                    case "table":
+                        lines.push(...mdTable(entry.columns, entry.rows), "");
+                        break;
+                    case "raw":
+                        lines.push("```json", entry.text, "```", "");
+                        break;
+                    default:
+                        break;
+                }
+            });
+
+            let markdown = lines
+                .join("\n")
+                .replace(/\n{3,}/g, "\n\n")
+                .trim();
+
+            if (code) {
+                markdown += `\n\n### Query\n\n\`\`\`js\n${code.trim()}\n\`\`\``;
+            }
+
+            if (notes) {
+                const noteLines = collectNotes(markdown);
+                if (noteLines.length) {
+                    markdown += `\n\n### Notes\n\n${noteLines.join("\n")}`;
+                }
+            }
+
+            return markdown ? `${markdown}\n` : "";
+        }
+    }
+
+    // Flatten a cell/label value to inline Markdown text.
+    function mdText(value) {
+        if (value === undefined || value === null) return "";
+        if (value instanceof Date) return stats.formatDate(value);
+        return String(value).replace(/\|/g, "\\|").replace(/\n+/g, " ").trim();
+    }
+
+    function mdTable(columns, rows) {
+        if (!columns.length) return [];
+        const header = `| ${columns.map(mdText).join(" | ")} |`;
+        const divider = `| ${columns.map(() => "---").join(" | ")} |`;
+        const body = rows.map((row) => `| ${columns.map((_, index) => mdText(row[index])).join(" | ")} |`);
+        return [header, divider, ...body];
+    }
+
+    // Notes for any activity whose name appears as a whole word in the results.
+    function collectNotes(markdown) {
+        const haystack = markdown.toLowerCase();
+        return Object.keys(ACTIVITY_NOTES)
+            .filter((name) => {
+                const escaped = name.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                return new RegExp(`(^|[^\\w])${escaped}([^\\w]|$)`).test(haystack);
+            })
+            .map((name) => `- **${name}:** ${ACTIVITY_NOTES[name]}`);
     }
 
     function formatCell(value) {
@@ -585,7 +767,7 @@
             group: "Explore",
             name: "Activity vocabulary",
             code: dedent(`
-                // Every activity you've ever logged, with totals. Use these exact
+                // Every activity logged, with totals. Use these exact
                 // names in the other recipes. Change the slice() to see more rows.
                 const rows = data.activities()
                     .slice(0, 40)
@@ -620,6 +802,23 @@
 
                 out.heading("Where the time goes");
                 out.bars({ items });
+            `)
+        },
+        {
+            id: "solo-activities",
+            group: "Explore",
+            name: "Most-logged solo activities",
+            code: dedent(`
+                // Activities logged on their own, with no "+" combination.
+                // stats.countBy defaults to identity, so a flat list of names counts directly.
+                const solo = data.blocks.filter((b) => b.activities.length === 1);
+
+                out.heading("Most frequent solo activities");
+                out.bars({
+                    items: stats.countBy(solo.flatMap((b) => b.activities))
+                        .slice(0, 12)
+                        .map(([name, n]) => ({ label: name, value: n, sub: n + "×", color: data.colorOf(name) }))
+                });
             `)
         },
         {
@@ -683,7 +882,7 @@
         {
             id: "before-sleep",
             group: "Correlation",
-            name: "What you do before an activity",
+            name: "What I do before an activity",
             code: dedent(`
                 // Which activity most often immediately precedes a chosen activity.
                 const ACTIVITY = "Sleep";
@@ -1079,15 +1278,29 @@
     // ---------------------------------------------------------------------
 
     let activePicker = null;
+    // Width when the picker opened. On mobile, focusing the search field pops up
+    // the on-screen keyboard, which fires a `resize` (the visual viewport gets
+    // shorter). We must NOT treat that as a real resize — otherwise the picker
+    // closes the instant the keyboard appears. Only a width change (rotation, a
+    // genuine window resize) should dismiss the anchored popover.
+    let pickerViewportWidth = 0;
+    // When the picker opened. Mobile keyboards can also emit a transient scroll as
+    // they animate in; ignore scroll/resize for a moment so it doesn't self-close.
+    let pickerOpenedAt = 0;
 
     function closePicker() {
         if (activePicker) {
             activePicker.remove();
             activePicker = null;
             document.removeEventListener("mousedown", onPickerOutside, true);
-            window.removeEventListener("resize", closePicker);
+            window.removeEventListener("resize", onPickerResize);
             window.removeEventListener("scroll", onPickerScroll, true);
         }
+    }
+
+    function onPickerResize() {
+        if (Date.now() - pickerOpenedAt < 400) return;
+        if (window.innerWidth !== pickerViewportWidth) closePicker();
     }
 
     function onPickerOutside(event) {
@@ -1097,6 +1310,7 @@
     // Close when the page scrolls (the popover is anchored), but ignore scrolling
     // inside the picker's own list.
     function onPickerScroll(event) {
+        if (Date.now() - pickerOpenedAt < 400) return;
         if (activePicker && event.target && activePicker.contains(event.target)) return;
         closePicker();
     }
@@ -1165,9 +1379,11 @@
         menu.style.left = `${Math.max(12, Math.min(rect.left, window.innerWidth - width - 12))}px`;
 
         activePicker = menu;
+        pickerViewportWidth = window.innerWidth;
+        pickerOpenedAt = Date.now();
         setTimeout(() => search.focus(), 0);
         document.addEventListener("mousedown", onPickerOutside, true);
-        window.addEventListener("resize", closePicker);
+        window.addEventListener("resize", onPickerResize);
         window.addEventListener("scroll", onPickerScroll, true);
     }
 
@@ -1232,6 +1448,46 @@
         }
         if (!report.hasContent() && returned !== undefined) report.auto(returned);
         if (!report.hasContent()) report.note("Ran with no output. Use out.heading(), out.bars(), out.table(), … to render results.");
+    }
+
+    let copyFeedbackTimer = null;
+
+    function flashCopyLabel(text) {
+        if (!elements.copyLabel) return;
+        elements.copyLabel.textContent = text;
+        clearTimeout(copyFeedbackTimer);
+        copyFeedbackTimer = setTimeout(() => {
+            elements.copyLabel.textContent = "Copy as Markdown";
+        }, 1600);
+    }
+
+    async function copyResultsAsMarkdown() {
+        if (!report) return;
+        const markdown = report.toMarkdown({
+            code: elements.copyCode.checked ? editor.getCode() : null,
+            notes: elements.copyNotes.checked
+        });
+        if (!markdown.trim()) {
+            flashCopyLabel("Nothing to copy");
+            return;
+        }
+        try {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(markdown);
+            } else {
+                const area = document.createElement("textarea");
+                area.value = markdown;
+                area.style.position = "fixed";
+                area.style.opacity = "0";
+                document.body.appendChild(area);
+                area.select();
+                document.execCommand("copy");
+                area.remove();
+            }
+            flashCopyLabel("Copied!");
+        } catch (error) {
+            flashCopyLabel("Copy failed");
+        }
     }
 
     function allRecipes() {
@@ -1341,7 +1597,11 @@
             saveInput: document.getElementById("insightsSaveName"),
             saveConfirm: document.getElementById("insightsSaveConfirm"),
             saveCancel: document.getElementById("insightsSaveCancel"),
-            output: document.getElementById("insightsOutput")
+            output: document.getElementById("insightsOutput"),
+            copyButton: document.getElementById("insightsCopyMd"),
+            copyLabel: document.getElementById("insightsCopyMdLabel"),
+            copyCode: document.getElementById("insightsCopyCode"),
+            copyNotes: document.getElementById("insightsCopyNotes")
         };
         if (Object.values(elements).some((node) => !node)) return;
 
@@ -1381,6 +1641,7 @@
             galleryExpanded = !galleryExpanded;
             renderGallery();
         });
+        elements.copyButton.addEventListener("click", copyResultsAsMarkdown);
         elements.saveButton.addEventListener("click", openSaveRow);
         elements.saveConfirm.addEventListener("click", saveCurrentQuery);
         elements.saveCancel.addEventListener("click", closeSaveRow);

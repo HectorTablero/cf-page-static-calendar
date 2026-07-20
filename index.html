@@ -282,6 +282,20 @@
 
                     <div class="insights-output-pane">
                         <div id="insightsOutput" class="insights-output"></div>
+                        <div class="insights-output-actions">
+                            <label class="insights-output-opt">
+                                <input type="checkbox" id="insightsCopyCode" />
+                                <span>Code</span>
+                            </label>
+                            <label class="insights-output-opt">
+                                <input type="checkbox" id="insightsCopyNotes" checked />
+                                <span>Notes</span>
+                            </label>
+                            <button type="button" id="insightsCopyMd" class="insights-copy-btn">
+                                <span class="material-symbols-outlined" aria-hidden="true">content_copy</span>
+                                <span id="insightsCopyMdLabel">Copy as Markdown</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -294,20 +308,26 @@
                         <div class="insights-guide__group">
                             <h4>data — CalendarDataset</h4>
                             <ul>
-                                <li><code>data.blocks</code> / <code>data.events</code> — day-split segments vs. events re-merged across midnight.</li>
-                                <li><code>data.days</code>, <code>data.calendarDays()</code>, <code>data.range</code> — per-day view and the logged date span (gaps included).</li>
-                                <li><code>data.activities()</code> — every activity name with hours, block/event counts, first &amp; last seen.</li>
-                                <li><code>data.withActivity(name)</code>, <code>data.blocksOf(name)</code>, <code>data.hoursOf(name)</code>, <code>data.colorOf(name)</code>.</li>
+                                <li><code>data.blocks</code> / <code>data.events</code> — day-split segments vs. events re-merged across midnight. Both are arrays sorted by <code>start</code>.</li>
+                                <li>A <strong>block</strong> is <code>{ summary, activities, color, category, start, end, hours, dayKey, weekday, month, year, startMinutes, offsetMinutes, offsetFromHome, isContinuation, raw }</code> — <code>activities</code> is the <code>+</code>-split label list, <code>start</code>/<code>end</code> are Dates, <code>dayKey</code> is <code>"YYYY-MM-DD"</code>, <code>weekday</code> is 0–6 (0=Sun), <code>month</code> is 0–11 (0=Jan), <code>startMinutes</code> counts from midnight, and <code>raw</code> is the source event.</li>
+                                <li>An <strong>event</strong> has those same fields except <code>isContinuation</code> and <code>raw</code> are replaced by <code>spanDays</code> (calendar days the event covers, ≥ 1).</li>
+                                <li><code>data.days</code> / <code>data.calendarDays()</code> — per-day view; each day is <code>{ dayKey, date, blocks }</code>. <code>calendarDays()</code> also emits empty days for gaps in the log.</li>
+                                <li><code>data.range</code> — <code>{ firstDay, lastDay, totalDays }</code>, the logged date span (gaps included).</li>
+                                <li><code>data.activities()</code> — every activity name, most-used first: <code>{ name, color, hours, blocks, count, days, first, last }</code>, where <code>blocks</code> is the day-split count, <code>count</code> the merged-event count, <code>days</code> the number of distinct days, and <code>first</code>/<code>last</code> are Dates.</li>
+                                <li><code>data.categories()</code> — every colour-category, most-used first: <code>{ name, color, hours, days }</code>.</li>
+                                <li><code>data.withActivity(name)</code>, <code>data.blocksOf(name)</code>, <code>data.hoursOf(name)</code>, <code>data.colorOf(name)</code> — the events, blocks, total hours and representative colour for one activity.</li>
                                 <li><code>data.has(item, name)</code>, <code>data.hasAny(item, names)</code> — membership tests for a block/event.</li>
-                                <li><code>data.precededBy(name)</code> / <code>data.followedBy(name)</code> — timeline neighbours, for "what comes before X" correlations.</li>
+                                <li><code>data.hasName(name)</code>, <code>data.hasCategory(name)</code>, <code>data.entryColor(name)</code>, <code>data.categoryColor(name)</code> — whether a name is a known activity/category, and its colour (or <code>null</code>).</li>
+                                <li><code>data.precededBy(name)</code> / <code>data.followedBy(name)</code> — timeline neighbours as <code>[name, count]</code> pairs, most frequent first, for "what comes before/after X" correlations.</li>
+                                <li>Every block/event is timed in its own local wall clock and carries <code>offsetMinutes</code> (UTC offset) and <code>offsetFromHome</code> (clock shift vs your usual). Physical locations are intentionally not exposed.</li>
                             </ul>
                         </div>
                         <div class="insights-guide__group">
                             <h4>out — Report (renders elements)</h4>
                             <ul>
                                 <li><code>out.heading()</code>, <code>out.subheading()</code>, <code>out.p()</code>, <code>out.note()</code>, <code>out.callout(text, kind)</code>, <code>out.divider()</code>.</li>
-                                <li><code>out.stat(value, label, sub)</code>, <code>out.stats([…])</code>, <code>out.keyValues([[k, v]])</code>.</li>
-                                <li><code>out.list(items)</code>, <code>out.table({ columns, rows })</code>, <code>out.bars({ items })</code>.</li>
+                                <li><code>out.stat(value, label, sub)</code>, <code>out.stats([{ value, label, sub }])</code>, <code>out.keyValues([[k, v]])</code>.</li>
+                                <li><code>out.list(items)</code> — items are strings or <code>{ text, meta }</code>; <code>out.table({ columns, rows })</code> — <code>columns</code> is <code>string[]</code>, <code>rows</code> a matrix of cells; <code>out.bars({ items, max?, format? })</code> — items are <code>{ label, value, sub?, color? }</code>.</li>
                                 <li><code>out.raw(value)</code> — escape hatch to pretty-print JSON. Returning a value auto-renders it.</li>
                             </ul>
                         </div>
@@ -315,11 +335,11 @@
                             <h4>stats — helpers</h4>
                             <ul>
                                 <li><code>sum, mean, median, quantile, std, min, max, round</code>.</li>
-                                <li><code>groupBy, countBy, pearson</code> — aggregation &amp; correlation.</li>
-                                <li><code>formatHours, formatDate, formatDateTime, formatClock</code>; constants <code>MONTHS(_SHORT)</code>, <code>WEEKDAYS(_SHORT)</code>.</li>
+                                <li><code>groupBy(items, keyFn?), countBy(items, keyFn?), pearson</code> — <code>keyFn</code> defaults to identity, so <code>countBy(names)</code> just works. <code>groupBy</code> returns a <code>Map</code>; <code>countBy</code> returns <code>[key, count]</code> pairs sorted by count.</li>
+                                <li><code>formatHours, formatDate, formatDateTime, formatClock, formatOffset</code>; constants <code>MONTHS(_SHORT)</code>, <code>WEEKDAYS(_SHORT)</code>.</li>
                             </ul>
                         </div>
-                        <p class="insights-guide__foot">Snippets run in your browser only — nothing is uploaded, and saved queries live in this browser's local storage. They read a copy of the loaded data, so you can't corrupt the calendar.</p>
+                        <p class="insights-guide__foot">Use <strong>Copy as Markdown</strong> under the results to share a run (optionally with its code and notes on the activities involved). Snippets run in your browser only — nothing is uploaded, and saved queries live in this browser's local storage. They read a copy of the loaded data, so you can't corrupt the calendar.</p>
                     </div>
                 </details>
             </section>

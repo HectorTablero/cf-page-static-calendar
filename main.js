@@ -1,5 +1,9 @@
 let originalEvents = [];
 let invalidMonthKeys = [];
+// { offset } (minutes from UTC) of the last column rendered, tracked while the
+// calendar renders chronologically so a clock-shift badge appears exactly where
+// the offset changes (travel). Reset per render; no home is assumed.
+let calendarTzCursor = { offset: null };
 const calendarDiv = document.getElementById("calendar");
 const calendarLoading = document.getElementById("calendarLoading");
 const calendarTooltip = document.getElementById("calendarTooltip");
@@ -124,14 +128,6 @@ function hideCalendarTooltip() {
     calendarTooltip.classList.add("hidden");
 }
 
-function scrollCalendarToEnd() {
-    requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-            calendarDiv.scrollLeft = calendarDiv.scrollWidth;
-        });
-    });
-}
-
 const CALENDAR_DATA_URL = "https://workers.tablerus.es/calendar/everything";
 
 function applyCalendarData(data) {
@@ -208,6 +204,129 @@ async function runOnMainThread() {
     return buildCalendarData(rawEvents, colors);
 }
 
+// Signed clock shift between two zones, in hours: "+7h" / "−3h" / "+5.5h".
+function formatClockShift(deltaMinutes) {
+    if (!Number.isFinite(deltaMinutes) || deltaMinutes === 0) return "";
+    const abs = Math.abs(deltaMinutes) / 60;
+    const rounded = abs % 1 === 0 ? abs.toFixed(0) : abs.toFixed(1);
+    return `${deltaMinutes > 0 ? "+" : "−"}${rounded}h`;
+}
+
+// A small non-growing pill marking that the clock moved when entering this
+// column. It states the shift only (e.g. "+7h") — no zone name, no "home".
+function createTzShiftBadge(deltaMinutes) {
+    const badge = document.createElement("div");
+    badge.classList.add("tzShiftBadge");
+
+    const icon = document.createElement("span");
+    icon.className = "material-symbols-outlined tzShiftBadge__icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = "schedule";
+    badge.appendChild(icon);
+
+    const text = document.createElement("span");
+    text.textContent = formatClockShift(deltaMinutes);
+    badge.appendChild(text);
+
+    const tip = `Time zone change\nClock moved ${formatClockShift(deltaMinutes)}`;
+    badge.addEventListener("mouseenter", (e) => showCalendarTooltip(tip, e.clientX, e.clientY));
+    badge.addEventListener("mousemove", (e) => positionCalendarTooltip(e.clientX, e.clientY));
+    badge.addEventListener("mouseleave", hideCalendarTooltip);
+
+    return badge;
+}
+
+function renderEventBlock(container, event) {
+    const startTime = new Date(event.trueStart ? event.trueStart.dateTime : event.start.dateTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+    const endTime = new Date(event.trueEnd ? event.trueEnd.dateTime : event.end.dateTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
+    const duration = (new Date(event.end.dateTime).getTime() - new Date(event.start.dateTime).getTime()) / 60000;
+
+    const outerDiv = document.createElement("div");
+    outerDiv.classList.add("eventOuter");
+    outerDiv.style.flex = duration;
+    container.appendChild(outerDiv);
+
+    const innerDiv = document.createElement("div");
+    innerDiv.classList.add("eventInner");
+    innerDiv.style.backgroundColor = event.color;
+    outerDiv.appendChild(innerDiv);
+
+    if (duration < 90) {
+        const tooltipText = `${event.summary}\n${startTime} - ${endTime}`;
+        innerDiv.addEventListener("mouseenter", (eventMouse) => {
+            showCalendarTooltip(tooltipText, eventMouse.clientX, eventMouse.clientY);
+        });
+        innerDiv.addEventListener("mousemove", (eventMouse) => {
+            positionCalendarTooltip(eventMouse.clientX, eventMouse.clientY);
+        });
+        innerDiv.addEventListener("mouseleave", hideCalendarTooltip);
+    }
+
+    const title = document.createElement("h4");
+    title.innerText = event.summary;
+    innerDiv.appendChild(title);
+
+    const time = document.createElement("p");
+    time.innerText = `${startTime} - ${endTime}`;
+    innerDiv.appendChild(time);
+
+    event.div = outerDiv;
+
+    if (event.summary.indexOf("+") === -1 && event.summary.trim() !== "?" && event.color !== colors.default) {
+        innerDiv.style.cursor = "pointer";
+        innerDiv.addEventListener("click", () => {
+            const selectedTitle = document.getElementById("selectedTitle").textContent.trim().toLowerCase();
+            const escapedSummary = escapeAttributeValue(event.summary);
+            const selector = `[data-value="${escapedSummary}"]`;
+            if (selectedTitle === event.summary.trim().toLowerCase()) document.getElementById("titleOptions").childNodes[0].click();
+            else document.getElementById("titleOptions").querySelector(selector)?.click();
+
+            const matchingScope = getAnalyticsScopeOptions().find((option) => option.kind === "activity" && option.value.trim().toLowerCase() === event.summary.trim().toLowerCase());
+            if (matchingScope) setAnalyticsScopeSelection(matchingScope);
+        });
+    } else innerDiv.style.cursor = "not-allowed";
+}
+
+const MINUTES_PER_DAY = 1440;
+
+// A transparent flex spacer sized in minutes, so a segment's events line up with
+// the hours they actually cover on a full 00:00–24:00 axis (the rest is padding).
+function createDaySpacer(minutes) {
+    const spacer = document.createElement("div");
+    spacer.className = "daySegment__pad";
+    spacer.style.flexGrow = String(Math.max(0, minutes));
+    spacer.style.flexShrink = "1";
+    spacer.style.flexBasis = "0";
+    return spacer;
+}
+
+function minutesFromMidnight(isoString) {
+    const d = new Date(isoString);
+    return d.getHours() * 60 + d.getMinutes();
+}
+
+// One sub-column for a single time zone's slice of a day. Events keep their wall
+// clock; top/bottom padding holds them to their true fraction of the 24h axis so
+// two segments of the same date tile together instead of each filling the column.
+function renderDaySegment(events, shift) {
+    const col = document.createElement("div");
+    col.className = "daySegment";
+    if (!events.length) return col;
+
+    const topPad = minutesFromMidnight(events[0].start.dateTime);
+    const covered = events.reduce((sum, event) => sum + (new Date(event.end.dateTime).getTime() - new Date(event.start.dateTime).getTime()) / 60000, 0);
+    const bottomPad = Math.max(0, MINUTES_PER_DAY - topPad - covered);
+
+    col.appendChild(createDaySpacer(topPad));
+    // The clock-shift badge sits at the handoff moment (right where the events of
+    // the new zone begin), stating only the shift — no zone name, no "home".
+    if (shift != null) col.appendChild(createTzShiftBadge(shift));
+    events.forEach((event) => renderEventBlock(col, event));
+    col.appendChild(createDaySpacer(bottomPad));
+
+    return col;
+}
+
 function renderDay(dateD) {
     const dayKey = `${dateD.getFullYear()}-${String(dateD.getMonth() + 1).padStart(2, "0")}-${String(dateD.getDate()).padStart(2, "0")}`;
     const dayEvents = eventsByDay[dayKey] || [];
@@ -224,56 +343,33 @@ function renderDay(dateD) {
     hr.classList.add("mb-1");
     div.appendChild(hr);
 
+    // Split the day into contiguous segments by UTC offset — the clock shift is
+    // what matters, and it's the accurate signal (the underlying location name is
+    // not). Two differently-named zones that share an offset are NOT separated.
+    // A day the user travelled through gets one extra sub-column per shift, all
+    // under this single date, each laid out in its own local time.
+    const segments = [];
     dayEvents.forEach((event) => {
-        const startTime = new Date(event.trueStart ? event.trueStart.dateTime : event.start.dateTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
-        const endTime = new Date(event.trueEnd ? event.trueEnd.dateTime : event.end.dateTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
-        const duration = (new Date(event.end.dateTime).getTime() - new Date(event.start.dateTime).getTime()) / 60000;
-
-        const outerDiv = document.createElement("div");
-        outerDiv.classList.add("eventOuter");
-        outerDiv.style.flex = duration;
-        div.appendChild(outerDiv);
-
-        const innerDiv = document.createElement("div");
-        innerDiv.classList.add("eventInner");
-        innerDiv.style.backgroundColor = event.color;
-        outerDiv.appendChild(innerDiv);
-
-        if (duration < 90) {
-            const tooltipText = `${event.summary}\n${startTime} - ${endTime}`;
-            innerDiv.addEventListener("mouseenter", (eventMouse) => {
-                showCalendarTooltip(tooltipText, eventMouse.clientX, eventMouse.clientY);
-            });
-            innerDiv.addEventListener("mousemove", (eventMouse) => {
-                positionCalendarTooltip(eventMouse.clientX, eventMouse.clientY);
-            });
-            innerDiv.addEventListener("mouseleave", hideCalendarTooltip);
-        }
-
-        const title = document.createElement("h4");
-        title.innerText = event.summary;
-        innerDiv.appendChild(title);
-
-        const time = document.createElement("p");
-        time.innerText = `${startTime} - ${endTime}`;
-        innerDiv.appendChild(time);
-
-        event.div = outerDiv;
-
-        if (event.summary.indexOf("+") === -1 && event.summary.trim() !== "?" && event.color !== colors.default) {
-            innerDiv.style.cursor = "pointer";
-            innerDiv.addEventListener("click", () => {
-                const selectedTitle = document.getElementById("selectedTitle").textContent.trim().toLowerCase();
-                const escapedSummary = escapeAttributeValue(event.summary);
-                const selector = `[data-value="${escapedSummary}"]`;
-                if (selectedTitle === event.summary.trim().toLowerCase()) document.getElementById("titleOptions").childNodes[0].click();
-                else document.getElementById("titleOptions").querySelector(selector)?.click();
-
-                const matchingScope = getAnalyticsScopeOptions().find((option) => option.kind === "activity" && option.value.trim().toLowerCase() === event.summary.trim().toLowerCase());
-                if (matchingScope) setAnalyticsScopeSelection(matchingScope);
-            });
-        } else innerDiv.style.cursor = "not-allowed";
+        const offset = event.offsetMinutes;
+        const last = segments[segments.length - 1];
+        if (last && last.offset === offset) last.events.push(event);
+        else segments.push({ offset, events: [event] });
     });
+
+    if (segments.length > 1) div.classList.add("dayContainer--split");
+
+    const segRow = document.createElement("div");
+    segRow.className = "daySegments";
+    segments.forEach((segment) => {
+        const offset = segment.offset;
+        let shift = null;
+        if (Number.isFinite(offset) && Number.isFinite(calendarTzCursor.offset) && calendarTzCursor.offset !== offset) {
+            shift = offset - calendarTzCursor.offset;
+        }
+        if (Number.isFinite(offset)) calendarTzCursor = { offset };
+        segRow.appendChild(renderDaySegment(segment.events, shift));
+    });
+    div.appendChild(segRow);
 
     return div;
 }
@@ -325,36 +421,199 @@ function renderMonth(dateM) {
     return div;
 }
 
+// ---------------------------------------------------------------------------
+// Month-level virtualization
+//
+// A fully-rendered calendar can hold many thousands of event nodes. Keeping all
+// of them attached makes scrolling, hovering and layout lag badly. Instead each
+// month is rendered exactly once (so its true width is measured and its node —
+// including per-event `event.div` handles the filters rely on — is cached), then
+// only the months near the viewport stay attached. Off-screen months collapse to
+// a fixed-width placeholder of their measured size, so the scrollbar spans the
+// full width the calendar would occupy if everything were rendered, and nothing
+// shifts when a month mounts or unmounts. A one-viewport buffer on each side is
+// kept mounted so scrolling never reveals an unrendered gap.
+// ---------------------------------------------------------------------------
+
+let calendarMonthSlots = [];
+let calendarScrollRaf = 0;
+let calendarResizeTimer = 0;
+
+function mountCalendarSlot(slot) {
+    if (slot.mounted) return;
+    slot.slotEl.appendChild(slot.node);
+    slot.slotEl.style.minHeight = "";
+    slot.mounted = true;
+}
+
+function unmountCalendarSlot(slot) {
+    if (!slot.mounted) return;
+    if (slot.node.parentNode === slot.slotEl) slot.slotEl.removeChild(slot.node);
+    // Hold the reserved height so a collapsed month keeps the row tall while its
+    // heavy content is detached.
+    slot.slotEl.style.minHeight = `${slot.height}px`;
+    slot.mounted = false;
+}
+
+// Fix each slot's width to its measured size and record its left edge in the
+// scroll content's coordinate space, so the scroll handler can decide visibility
+// with plain arithmetic instead of forcing layout on every event.
+function layoutCalendarSlots() {
+    const gap = parseFloat(getComputedStyle(calendarDiv).gap) || 0;
+    let acc = 0;
+    calendarMonthSlots.forEach((slot) => {
+        slot.slotEl.style.width = `${slot.width}px`;
+        slot.left = acc;
+        acc += slot.width + gap;
+    });
+}
+
+function virtualizeCalendar() {
+    if (!calendarMonthSlots.length) return;
+
+    const viewLeft = calendarDiv.scrollLeft;
+    const viewWidth = calendarDiv.clientWidth;
+    // Extend the mounted window by a full viewport on each side so neighbouring
+    // months are ready before they scroll into view.
+    const buffer = viewWidth || 0;
+    const min = viewLeft - buffer;
+    const max = viewLeft + viewWidth + buffer;
+
+    calendarMonthSlots.forEach((slot) => {
+        const slotLeft = slot.left;
+        const slotRight = slot.left + slot.width;
+        if (slotRight >= min && slotLeft <= max) mountCalendarSlot(slot);
+        else unmountCalendarSlot(slot);
+    });
+}
+
+function scheduleVirtualize() {
+    if (calendarScrollRaf) return;
+    calendarScrollRaf = requestAnimationFrame(() => {
+        calendarScrollRaf = 0;
+        virtualizeCalendar();
+    });
+}
+
+// Widths depend on the responsive breakpoint (day columns shrink on narrow
+// viewports), so re-measure the cached month nodes when the window resizes. Each
+// node is mounted one at a time to measure, so only one heavy month is ever in
+// the live layout tree during the pass.
+function remeasureCalendarSlots() {
+    calendarMonthSlots.forEach((slot) => {
+        const wasMounted = slot.mounted;
+        mountCalendarSlot(slot);
+        // Clear the pinned width so the month measures its natural (responsive)
+        // size rather than the previously stored one.
+        slot.slotEl.style.width = "";
+        slot.width = slot.slotEl.offsetWidth;
+        slot.height = slot.slotEl.offsetHeight;
+        if (!wasMounted) unmountCalendarSlot(slot);
+    });
+    layoutCalendarSlots();
+    virtualizeCalendar();
+}
+
+function handleCalendarResize() {
+    clearTimeout(calendarResizeTimer);
+    calendarResizeTimer = setTimeout(remeasureCalendarSlots, 150);
+}
+
+function getRenderableMonthDates(events) {
+    const firstEventDate = new Date(events[0].start.dateTime);
+    const lastEventDate = new Date(events[events.length - 1].start.dateTime);
+    const cursor = new Date(firstEventDate.getFullYear(), firstEventDate.getMonth(), 1);
+    const lastMonth = new Date(lastEventDate.getFullYear(), lastEventDate.getMonth(), 1);
+
+    const months = [];
+    while (cursor <= lastMonth) {
+        const key = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}`;
+        if (!invalidMonthKeys.includes(key)) months.push(new Date(cursor));
+        cursor.setMonth(cursor.getMonth() + 1);
+    }
+
+    return months;
+}
+
+// Render every month once — in chronological order so the clock-shift cursor
+// flows exactly as it did when the whole calendar rendered in one pass — measure
+// it, then collapse it to a placeholder. Work is spread across frames so the page
+// stays responsive while it builds (a spinner is shown throughout).
+function buildCalendarSlots(monthDates, onDone) {
+    calendarMonthSlots = [];
+    const BATCH = 3;
+    let i = 0;
+
+    function step() {
+        const end = Math.min(i + BATCH, monthDates.length);
+        for (; i < end; i++) {
+            const node = renderMonth(new Date(monthDates[i]));
+            const slotEl = document.createElement("div");
+            slotEl.className = "monthSlot";
+            slotEl.appendChild(node);
+            calendarDiv.appendChild(slotEl);
+
+            const slot = {
+                node,
+                slotEl,
+                mounted: true,
+                width: slotEl.offsetWidth,
+                height: slotEl.offsetHeight,
+                left: 0
+            };
+            unmountCalendarSlot(slot);
+            calendarMonthSlots.push(slot);
+        }
+
+        if (i < monthDates.length) requestAnimationFrame(step);
+        else onDone();
+    }
+
+    step();
+}
+
 function renderCalendar(events) {
     if (!events.length) {
         return;
     }
 
-    const firstEventDate = new Date(events[0].start.dateTime);
-    const lastEventDate = new Date(events[events.length - 1].start.dateTime);
-    const currentDate = new Date(firstEventDate.getFullYear(), firstEventDate.getMonth(), 1);
-    const lastRenderableMonth = new Date(lastEventDate.getFullYear(), lastEventDate.getMonth(), 1);
+    const monthDates = getRenderableMonthDates(events);
+    if (!monthDates.length) return;
 
-    function renderNextMonth() {
-        if (currentDate <= lastRenderableMonth) {
-            const key = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, "0")}`;
-            if (!invalidMonthKeys.includes(key)) {
-                calendarDiv.appendChild(renderMonth(new Date(currentDate)));
-            }
-            currentDate.setMonth(currentDate.getMonth() + 1);
-            // Render next month in the next frame to keep UI responsive
-            requestAnimationFrame(renderNextMonth);
-        } else {
-            // Finished rendering
-            scrollCalendarToEnd();
-            setCalendarLoadingState(false);
-            initializeTitleDropdown();
-            initializeAnalyticsScopeDropdown();
-            updateChart();
-        }
-    }
+    // No assumed home: the running offset starts empty and each real change of
+    // offset (in chronological order) surfaces a clock-shift badge on that column.
+    calendarTzCursor = { offset: null };
 
-    renderNextMonth();
+    // While loading, the calendar carries `.hidden` (display:none), under which
+    // offsetWidth measures 0. Take it out of `hidden` but keep it invisible and
+    // out of flow (so the spinner still reads as the loading state and no gap
+    // opens up); the boxes still lay out, so measurement is accurate.
+    calendarDiv.classList.remove("hidden");
+    calendarDiv.style.visibility = "hidden";
+    calendarDiv.style.position = "absolute";
+
+    buildCalendarSlots(monthDates, () => {
+        layoutCalendarSlots();
+        calendarDiv.style.visibility = "";
+        calendarDiv.style.position = "";
+        setCalendarLoadingState(false);
+
+        calendarDiv.addEventListener("scroll", scheduleVirtualize, { passive: true });
+        window.addEventListener("resize", handleCalendarResize);
+
+        // Jump to the latest month (as before), then mount whatever the scroll
+        // position now reveals.
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                calendarDiv.scrollLeft = calendarDiv.scrollWidth;
+                virtualizeCalendar();
+            });
+        });
+
+        initializeTitleDropdown();
+        initializeAnalyticsScopeDropdown();
+        updateChart();
+    });
 }
 
 function getMostCommonColor(key) {
@@ -460,6 +719,14 @@ function hslToHex(h, s, l) {
 function adjustHexLightness(hex, l = 60) {
     const hsl = hexToHSL(hex);
     return hslToHex(hsl.h, hsl.s, l);
+}
+
+function hexToRgba(hex, alpha = 1) {
+    const clean = hex.replace(/^#/, "");
+    const r = parseInt(clean.substring(0, 2), 16);
+    const g = parseInt(clean.substring(2, 4), 16);
+    const b = parseInt(clean.substring(4, 6), 16);
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 function formatDurationHours(hours) {
@@ -657,11 +924,14 @@ function filterEventsByScope(events, selection) {
 
 function createOverviewChart(events) {
     const eventGroups = processEventData(events);
-    const categories = Object.keys(eventGroups).sort((a, b) => {
-        const aTotal = Object.values(eventGroups[a]).reduce((sum, value) => sum + value, 0);
-        const bTotal = Object.values(eventGroups[b]).reduce((sum, value) => sum + value, 0);
-        return bTotal - aTotal;
-    });
+    const categories = Object.keys(eventGroups)
+        // Drop the "Not Specified" bucket, matching the timeline chart.
+        .filter((color) => color !== colors.default && categoryNames[color] !== "Not Specified")
+        .sort((a, b) => {
+            const aTotal = Object.values(eventGroups[a]).reduce((sum, value) => sum + value, 0);
+            const bTotal = Object.values(eventGroups[b]).reduce((sum, value) => sum + value, 0);
+            return bTotal - aTotal;
+        });
 
     const labels = categories.map((category) => categoryNames[category] || category);
     const seriesData = [];
@@ -954,7 +1224,8 @@ function createTimelineChart(events) {
                       data: series.data,
                       backgroundColor: "rgba(15, 23, 42, 0)",
                       hoverBackgroundColor: "rgba(15, 23, 42, 0)",
-                      borderColor: series.color,
+                      // Slightly translucent lines; points stay solid for legibility.
+                      borderColor: hexToRgba(series.color, 0.5),
                       pointBackgroundColor: series.color,
                       pointBorderColor: series.color,
                       pointRadius: 4,

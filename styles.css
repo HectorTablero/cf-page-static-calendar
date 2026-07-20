@@ -1033,6 +1033,13 @@ body {
     background-clip: content-box;
 }
 
+/* One virtualized month. Width is pinned to the month's measured size so the
+   scroll width matches a fully-rendered calendar and nothing shifts when the
+   heavy month content is mounted or detached. */
+.monthSlot {
+    flex: 0 0 auto;
+}
+
 .monthContainer {
     display: flex;
     align-items: flex-start;
@@ -1068,7 +1075,8 @@ body {
 }
 
 .dayContainer {
-    width: 145px;
+    min-width: 145px;
+    width: max-content;
     height: 82vh;
     border-radius: 12px;
     border: 1px solid rgba(148, 163, 184, 0.18);
@@ -1079,6 +1087,39 @@ body {
     flex-direction: column;
     flex-shrink: 0;
     overflow: hidden;
+}
+
+/* A single date holds one sub-column per time zone it spanned. */
+.daySegments {
+    flex: 1;
+    display: flex;
+    min-height: 0;
+}
+
+.daySegment {
+    position: relative;
+    flex: 0 0 137px;
+    width: 137px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.daySegment + .daySegment {
+    margin-left: 9px;
+    padding-left: 8px;
+    border-left: 1px dashed rgba(37, 99, 235, 0.4);
+}
+
+/* Transparent time padding: no interactions, just holds events to their hours. */
+.daySegment__pad {
+    pointer-events: none;
+}
+
+.dayContainer--split {
+    border-color: rgba(37, 99, 235, 0.3);
+    box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.16);
 }
 
 .dayContainer > p:first-child {
@@ -1129,6 +1170,36 @@ body {
     border-radius: 50%;
     display: inline-block;
     margin-right: 5px;
+}
+
+/* Clock-shift pill for a sub-column whose zone changed. It floats over the top of
+   the column (absolutely positioned) so it never consumes vertical space — the
+   events stay pinned to their true position on the 00:00–24:00 axis. */
+.tzShiftBadge {
+    position: absolute;
+    top: 3px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(219, 234, 254, 0.95);
+    border: 1px solid rgba(37, 99, 235, 0.4);
+    color: #1d4ed8;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    cursor: default;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, 0.12);
+}
+
+.tzShiftBadge__icon {
+    font-size: 15px;
+    flex-shrink: 0;
 }
 
 .calendarContainer.filtered .eventOuter {
@@ -1608,9 +1679,12 @@ body {
     background: rgba(241, 245, 249, 0.6);
     border: 1px solid rgba(148, 163, 184, 0.16);
     overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 .insights-output {
+    flex: 1;
     min-height: 340px;
     max-height: 620px;
     overflow-y: auto;
@@ -1618,6 +1692,115 @@ body {
     display: flex;
     flex-direction: column;
     gap: 14px;
+}
+
+/* Rendered blocks keep their natural height instead of being squeezed by the
+   flex column — so a result with several tables scrolls the whole pane rather
+   than compressing every block. The copy bar (a sibling of this element) stays
+   pinned below. */
+.insights-output > * {
+    flex: 0 0 auto;
+    min-width: 0;
+}
+
+/* Export bar pinned below the results — deliberately understated. */
+.insights-output-actions {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 12px;
+    border-top: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+/* Discreet copy button: a quiet text-and-icon control, pushed to the end. */
+.insights-copy-btn {
+    margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 9px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #64748b;
+    font: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+        background 140ms ease,
+        color 140ms ease;
+}
+
+.insights-copy-btn:hover {
+    background: rgba(37, 99, 235, 0.08);
+    color: #1d4ed8;
+}
+
+.insights-copy-btn .material-symbols-outlined {
+    font-size: 17px;
+}
+
+/* Prettier, discreet option chips with a custom check box. */
+.insights-output-opt {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px 4px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    font-size: 0.76rem;
+    font-weight: 600;
+    color: #64748b;
+    cursor: pointer;
+    user-select: none;
+    transition:
+        background 140ms ease,
+        border-color 140ms ease,
+        color 140ms ease;
+}
+
+.insights-output-opt:hover {
+    border-color: rgba(37, 99, 235, 0.4);
+    color: #334155;
+}
+
+.insights-output-opt input {
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.insights-output-opt::before {
+    content: "";
+    width: 14px;
+    height: 14px;
+    border-radius: 5px;
+    border: 1.5px solid rgba(148, 163, 184, 0.7);
+    background: transparent center / 10px no-repeat;
+    transition:
+        background-color 140ms ease,
+        border-color 140ms ease;
+}
+
+.insights-output-opt:has(input:checked) {
+    background: rgba(37, 99, 235, 0.1);
+    border-color: rgba(37, 99, 235, 0.45);
+    color: #1d4ed8;
+}
+
+.insights-output-opt:has(input:checked)::before {
+    border-color: #2563eb;
+    background-color: #2563eb;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");
+}
+
+.insights-output-opt:focus-within {
+    border-color: rgba(37, 99, 235, 0.55);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
 .insights-output::-webkit-scrollbar {
@@ -1756,7 +1939,11 @@ body {
 }
 
 .insights-table-wrap {
-    overflow-x: auto;
+    /* Once a table would grow past this threshold it stops expanding and scrolls
+       within itself, so one large table can't dominate the results pane. Shorter
+       tables keep their natural height. */
+    max-height: 360px;
+    overflow: auto;
     border-radius: 14px;
     border: 1px solid rgba(148, 163, 184, 0.18);
 }
@@ -2035,8 +2222,13 @@ body {
     }
 
     .dayContainer {
-        width: 140px;
+        min-width: 140px;
         height: 74vh;
+    }
+
+    .daySegment {
+        flex-basis: 132px;
+        width: 132px;
     }
 
     .chart-frame--overview,
