@@ -61,7 +61,6 @@
         Class: '"Class" represents only time spent in a lecture or class practice in person. It does not include Homework.',
         Languages: '"Languages" represents time spent learning a language, usually through Duolingo (Italian), WaniKani (Japanese) or books. My sessions tend to last less than 15 minutes (not logged), hence why the hour totals are low, but I practice daily without exception.',
         Cooking: 'I tend to multitask heavily when "Cooking", so this label only appears when I am fully focused on Cooking, and usually for long sessions (elaborate dishes).',
-        Series: '"Series" only represents Western media, and is separate from the activity Anime.',
         Event: '"Event" mainly represents in-person workshops or expert discussions, and is logged both when I am an attendee and when I am the one presenting the Event.',
         Writing: '"Writing" is limited to creative writing, and does not include Work, Project or Research related writing.'
     };
